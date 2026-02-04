@@ -4,6 +4,10 @@
    - localStorage(共通キー)の所持数を反映
    - 検索 / 所持フィルタ / ソースフィルタ
    - 全展開 / 全折り畳み / 再読込
+
+   ✅ B仕様（未所持ロック）
+   - 所持(n>0): 画像/名前/▶詳細を見る を表示
+   - 未所持(n==0): 画像はロック枠、名前は「？？？？？」、詳細リンク無し
 */
 
 (() => {
@@ -171,6 +175,7 @@
 
   function buildSearchText(card, source) {
     // ⑥ 画面表示からは消すが、検索対象としては保持（実用性優先）
+    // ※B仕様でも「未所持を名前で検索」できてしまうのが嫌なら、ここで owned を見て name を抜くのも可能
     const parts = [
       card?.name ?? "",
       card?.wiki ?? "",
@@ -200,6 +205,57 @@
     let total = 0;
     for (const s of sourcesData) total += s.cards.length;
     return total;
+  }
+
+  // ===== Card HTML (B仕様) =====
+  function renderCardHtml(c, n) {
+    const owned = Number(n ?? 0) > 0;
+
+    const rarityNum = Number(c.rarity || 0);
+    const rarityLabel = rarityNum ? `★${rarityNum}` : "";
+    const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
+
+    const ownedCls = owned ? "owned" : "unowned";
+    const lockedCls = owned ? "" : "locked";
+
+    // ✅ 未所持は名前を伏せる
+    const nameHtml = owned ? escapeHtml(c.name || "(no name)") : "？？？？？";
+
+    // ✅ 未所持は詳細リンクを出さない
+    const wikiLink =
+      owned && c.wiki
+        ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">▶詳細を見る</a>`
+        : "";
+
+    // ✅ 未所持は画像を出さない（ロック枠）
+    const img = owned
+      ? (c.img
+          ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
+          : `<div class="noimg">NO IMAGE</div>`)
+      : `<div class="locked-img" aria-label="未所持"></div>`;
+
+    // ✅ クリック導線：所持かつwikiがある時だけリンク化
+    const wrapStart =
+      owned && c.wiki
+        ? `<a class="card-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">`
+        : `<div class="card-link" tabindex="-1" aria-disabled="true">`;
+    const wrapEnd = owned && c.wiki ? `</a>` : `</div>`;
+
+    return `
+      ${wrapStart}
+        <div class="card ${ownedCls} ${lockedCls} ${rarityCls}">
+          <div class="thumb">${img}</div>
+          <div class="meta">
+            <div class="name">${nameHtml}</div>
+            <div class="sub">
+              <span class="tag">${escapeHtml(rarityLabel)}</span>
+              <span class="tag">所持:${owned ? Number(n ?? 0) : 0}</span>
+              ${wikiLink}
+            </div>
+          </div>
+        </div>
+      ${wrapEnd}
+    `;
   }
 
   // ===== Render =====
@@ -238,32 +294,7 @@
         const items = list
           .map((c) => {
             const n = Number(COUNTS[c.id] ?? 0);
-            const ownedCls = n > 0 ? "owned" : "unowned";
-            const rarityNum = Number(c.rarity || 0);
-            const rarityLabel = rarityNum ? `★${rarityNum}` : "";
-            const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
-
-            const wikiLink = c.wiki
-              ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">▶詳細を見る</a>`
-              : "";
-
-            const img = c.img
-              ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
-              : `<div class="noimg">NO IMAGE</div>`;
-
-            return `
-              <div class="card ${ownedCls} ${rarityCls}">
-                <div class="thumb">${img}</div>
-                <div class="meta">
-                  <div class="name">${escapeHtml(c.name || "(no name)")}</div>
-                  <div class="sub">
-                    <span class="tag">${escapeHtml(rarityLabel)}</span>
-                    <span class="tag">所持:${n}</span>
-                    ${wikiLink}
-                  </div>
-                </div>
-              </div>
-            `;
+            return renderCardHtml(c, n);
           })
           .join("");
 
