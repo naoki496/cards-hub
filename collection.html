@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>カード図鑑</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <h1>カード図鑑</h1>
+
+  <div class="panel">
+    <div class="panel-inner">
+
+      <p style="opacity:.8;font-size:13px;margin:0 0 10px;">
+        集めたカードがここに表示されます。
+      </p>
+
+      <div id="cardGrid" class="card-grid"></div>
+
+      <div style="margin-top:14px;">
+        <a href="./index.html" style="color:#d4af37;text-decoration:none;">
+          ← HUBへ戻る
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 必ずこの順番で読み込む -->
+  <script src="./csv.js"></script>
+  <script src="./collection.js"></script>
+</body>
+</html>
