@@ -1,19 +1,15 @@
 {
-  "version": 1,
   "storageKey": "hklobby.v1.cardCounts",
-  "legacyKeys": ["kobunQuiz.v1.cardCounts"],
   "sources": [
     {
-      "namespace": "kobun",
-      "title": "古文単語マスター",
-      "home": "https://naoki496.github.io/kobun-quiz/",
-      "csv": "https://naoki496.github.io/kobun-quiz/cards.csv"
+      "id": "kobun",
+      "title": "古文単語330マスター",
+      "cardsCsv": "https://naoki496.github.io/kobun-quiz/cards.csv"
     },
     {
-      "namespace": "bungaku",
+      "id": "bungakusi",
       "title": "文学史知識マスター",
-      "home": "https://naoki496.github.io/bungakusi-quiz/",
-      "csv": "https://naoki496.github.io/bungakusi-quiz/cards.csv"
+      "cardsCsv": "https://naoki496.github.io/bungakusi-quiz/cards.csv"
     }
   ]
 }
