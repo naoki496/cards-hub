@@ -8,6 +8,11 @@
    ✅ B仕様（未所持ロック）
    - 所持(n>0): 画像/名前/▶詳細を見る を表示
    - 未所持(n==0): 画像はロック枠、名前は「？？？？？」、詳細リンク無し
+
+   ✅ 重要修正（1）
+   - 「カード全体リンク <a>」の内側に「▶詳細を見る <a>」を置くと a 入れ子になり、
+     ブラウザの自動補正で “謎の空白クリック領域” が発生する。
+   - 対策：外側がリンクの時、内側は <span class="mini-link"> にして a 入れ子を排除。
 */
 
 (() => {
@@ -221,12 +226,6 @@
     // ✅ 未所持は名前を伏せる
     const nameHtml = owned ? escapeHtml(c.name || "(no name)") : "？？？？？";
 
-    // ✅ 未所持は詳細リンクを出さない
-    const wikiLink =
-      owned && c.wiki
-        ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">▶詳細を見る</a>`
-        : "";
-
     // ✅ 未所持は画像を出さない（ロック枠）
     const img = owned
       ? (c.img
@@ -234,12 +233,19 @@
           : `<div class="noimg">NO IMAGE</div>`)
       : `<div class="locked-img" aria-label="未所持"></div>`;
 
-    // ✅ クリック導線：所持かつwikiがある時だけリンク化
-    const wrapStart =
-      owned && c.wiki
-        ? `<a class="card-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">`
-        : `<div class="card-link" tabindex="-1" aria-disabled="true">`;
-    const wrapEnd = owned && c.wiki ? `</a>` : `</div>`;
+    const hasWiki = owned && !!c.wiki;
+
+    // ✅ クリック導線：所持かつwikiがある時だけカード全体をリンク化
+    const wrapStart = hasWiki
+      ? `<a class="card-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">`
+      : `<div class="card-link" tabindex="-1" aria-disabled="true">`;
+    const wrapEnd = hasWiki ? `</a>` : `</div>`;
+
+    // ✅ 重要：a の入れ子禁止（＝空白クリック領域の原因を除去）
+    // 外側がリンクの時は、内側は span で「見た目だけ」出す
+    const wikiChip = hasWiki
+      ? `<span class="mini-link" aria-hidden="true">▶詳細を見る</span>`
+      : "";
 
     return `
       ${wrapStart}
@@ -250,7 +256,7 @@
             <div class="sub">
               <span class="tag">${escapeHtml(rarityLabel)}</span>
               <span class="tag">所持:${owned ? Number(n ?? 0) : 0}</span>
-              ${wikiLink}
+              ${wikiChip}
             </div>
           </div>
         </div>
