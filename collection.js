@@ -1,259 +1,354 @@
-// collection.js (cards-hub)
-// - cards-manifest.json を読み込み
-// - sources[] の cardsCsv を順に読み込み（失敗しても落ちない）
-// - storageKey の所持数を参照して、統合図鑑を描画
-// - 戻る導線は collection.html 側のリンクで hub/index.html に戻す想定
+/* collection.js (cards-hub) */
+(() => {
+  "use strict";
 
-// ===== Manifest =====
-const MANIFEST_URL = "./cards-manifest.json";
+  // ===== DOM =====
+  const $ = (sel) => document.querySelector(sel);
+  const statusDataEl  = $("#statusData");
+  const statusOwnedEl = $("#statusOwned");
+  const statusTotalEl = $("#statusTotal");
+  const sourcesEl     = $("#sources");
+  const qEl           = $("#q");
+  const srcFilterEl   = $("#srcFilter");
+  const ownFilterEl   = $("#ownFilter");
+  const errorBoxEl    = $("#errorBox");
 
-// ===== DOM =====
-const gridEl = document.getElementById("cardGrid");
+  const btnReload     = $("#btnReload");
+  const btnExpandAll  = $("#btnExpandAll");
+  const btnCollapseAll= $("#btnCollapseAll");
 
-// ===== Storage =====
-function storageAvailable() {
-  try {
-    const x = "__storage_test__";
-    window.localStorage.setItem(x, x);
-    window.localStorage.removeItem(x);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const StorageAdapter = (() => {
-  const mem = new Map();
-  const ok = storageAvailable();
-  return {
-    isPersistent: ok,
-    get(key) {
-      if (ok) return window.localStorage.getItem(key);
-      return mem.get(key) ?? null;
-    },
-    set(key, value) {
-      try {
-        if (ok) window.localStorage.setItem(key, value);
-        else mem.set(key, value);
-      } catch (e) {
-        mem.set(key, value);
-        console.warn("[StorageAdapter] localStorage write failed; fallback to memory.", e);
-      }
-    },
-  };
-})();
-
-function loadCounts(storageKey) {
-  const raw = StorageAdapter.get(storageKey);
-  if (!raw) return {};
-  try {
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === "object" ? obj : {};
-  } catch {
-    return {};
-  }
-}
-
-// ===== CSV normalize (cards.csv) =====
-function normalizeCardRow(r) {
-  return {
-    id: String(r.id ?? "").trim(),
-    rarity: Number(r.rarity) || 0,
-    name: String(r.name ?? "").trim(),
-    img: String(r.img ?? "").trim(),
-    wiki: String(r.wiki ?? "").trim(),
-    weight: Number(r.weight ?? 1) || 1,
-  };
-}
-
-// ===== Utils =====
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function byRarityDescThenName(a, b) {
-  const ra = Number(a.rarity) || 0;
-  const rb = Number(b.rarity) || 0;
-  if (rb !== ra) return rb - ra;
-  return String(a.name || "").localeCompare(String(b.name || ""), "ja");
-}
-
-// ===== Render =====
-function renderEmpty(message) {
-  if (!gridEl) return;
-  gridEl.innerHTML = `<div style="opacity:.8; padding: 10px; text-align:left;">${escapeHtml(message)}</div>`;
-}
-
-/**
- * 期待する styles.css に既にあるクラス:
- * - card-item, rarity-3/4/5, card-item-name, card-item-count, card-item-rarity, card-item-detail
- * 既存UIを壊さないため、構造はできるだけ「kobun-quizの図鑑」に寄せます。
- */
-function renderCards({ manifest, allCards, counts }) {
-  if (!gridEl) return;
-
-  gridEl.innerHTML = "";
-
-  if (!allCards.length) {
-    renderEmpty("カードが見つかりませんでした。manifest / cards.csv を確認してください。");
-    return;
+  // ===== Helpers =====
+  function showError(msg, err) {
+    console.error(msg, err || "");
+    if (errorBoxEl) {
+      errorBoxEl.style.display = "";
+      errorBoxEl.textContent = `${msg}${err ? "\n" + (err?.message ?? String(err)) : ""}`;
+    }
+    if (statusDataEl) statusDataEl.textContent = "エラー";
   }
 
-  // source見出し用
-  const titleBySource = new Map((manifest.sources || []).map((s) => [String(s.id), String(s.title || s.id)]));
-
-  // 並び：ソース→レア度→名前（安定）
-  const sorted = [...allCards].sort((a, b) => {
-    const sa = String(a._sourceId || "");
-    const sb = String(b._sourceId || "");
-    if (sa !== sb) return sa.localeCompare(sb);
-    return byRarityDescThenName(a, b);
-  });
-
-  let currentSource = null;
-
-  for (const card of sorted) {
-    const sourceId = String(card._sourceId || "");
-    const sourceTitle = titleBySource.get(sourceId) || sourceId || "unknown";
-
-    // ソース見出し（UIを壊さない控えめ表示）
-    if (currentSource !== sourceId) {
-      currentSource = sourceId;
-
-      const head = document.createElement("div");
-      head.style.margin = "10px 0 6px";
-      head.style.padding = "8px 10px";
-      head.style.borderRadius = "12px";
-      head.style.textAlign = "left";
-      head.style.opacity = "0.92";
-      head.style.fontWeight = "900";
-      head.style.letterSpacing = ".04em";
-      head.style.background = "rgba(255,255,255,0.04)";
-      head.style.border = "1px solid rgba(255,255,255,0.08)";
-      head.textContent = sourceTitle;
-
-      gridEl.appendChild(head);
-    }
-
-    // counts は「獲得側アプリが保存した card.id」を参照する。
-    // ここでは “id衝突が起きない前提” なので、素直に card.id を引く。
-    const owned = counts[card.id] ?? 0;
-
-    const item = document.createElement("div");
-    item.className = `card-item rarity-${Number(card.rarity) || 0}`;
-
-    // 画像クリックでwikiに飛べる（wikiがあれば）
-    // wikiが空なら、ただの表示にする
-    const hasWiki = !!card.wiki;
-    const safeName = escapeHtml(card.name || "");
-    const safeImg = escapeHtml(card.img || "");
-    const safeWiki = escapeHtml(card.wiki || "");
-
-    if (owned > 0) {
-      // unlocked
-      item.innerHTML = `
-        ${hasWiki
-          ? `<a class="card-link" href="${safeWiki}" target="_blank" rel="noopener noreferrer">`
-          : `<div class="card-link">`}
-            <img src="${safeImg}" alt="${safeName}" loading="lazy" />
-            <div class="card-item-name">${safeName}</div>
-            <div class="card-item-count">所持：${owned}</div>
-            <div class="card-item-rarity">★${Number(card.rarity) || 0}</div>
-            ${hasWiki ? `<div class="card-item-detail">詳細を見る</div>` : ``}
-        ${hasWiki ? `</a>` : `</div>`}
-      `;
-    } else {
-      // locked
-      item.classList.add("card-locked");
-      item.innerHTML = `
-        <div class="locked-img"></div>
-        <div class="card-item-name">？？？</div>
-        <div class="card-item-count">未入手</div>
-        <div class="card-item-rarity">★${Number(card.rarity) || 0}</div>
-        <div class="card-hint">クイズで★3以上を取ると入手</div>
-      `;
-    }
-
-    gridEl.appendChild(item);
+  function setStatusData(text) {
+    if (statusDataEl) statusDataEl.textContent = text;
   }
-}
+  function setStatusOwned(n) {
+    if (statusOwnedEl) statusOwnedEl.textContent = String(n);
+  }
+  function setStatusTotal(n) {
+    if (statusTotalEl) statusTotalEl.textContent = String(n);
+  }
 
-// ===== Boot =====
-async function boot() {
-  try {
-    if (!gridEl) return;
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 
-    // CSVUtil チェック
-    if (!window.CSVUtil || typeof window.CSVUtil.load !== "function") {
-      renderEmpty("CSVUtil が見つかりません。csv.js の読み込み順/内容を確認してください。");
-      return;
+  // ===== localStorage (safe) =====
+  function storageAvailable() {
+    try {
+      const x = "__storage_test__";
+      localStorage.setItem(x, x);
+      localStorage.removeItem(x);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  const StorageAdapter = (() => {
+    const mem = new Map();
+    const ok = storageAvailable();
+    return {
+      get(key) {
+        if (ok) return localStorage.getItem(key);
+        return mem.get(key) ?? null;
+      },
+      set(key, value) {
+        try {
+          if (ok) localStorage.setItem(key, value);
+          else mem.set(key, value);
+        } catch {
+          mem.set(key, value);
+        }
+      },
+    };
+  })();
+
+  function loadCounts(storageKey) {
+    const raw = StorageAdapter.get(storageKey);
+    if (!raw) return {};
+    try {
+      const obj = JSON.parse(raw);
+      return obj && typeof obj === "object" ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  // ===== CSV load (CSVUtil if available, else fallback parser) =====
+  async function loadCsv(url) {
+    // cache bust (軽い保険)
+    const u = new URL(url, location.href);
+    if (!u.searchParams.has("v")) u.searchParams.set("v", String(Date.now()));
+
+    // Prefer CSVUtil (your csv.js)
+    if (window.CSVUtil && typeof window.CSVUtil.load === "function") {
+      return await window.CSVUtil.load(u.toString());
     }
 
-    // manifest
-    const res = await fetch(MANIFEST_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status} ${res.statusText}`);
-    const manifest = await res.json();
+    // Fallback: minimal CSV parser (commas + quotes)
+    const res = await fetch(u.toString(), { cache: "no-store" });
+    if (!res.ok) throw new Error(`CSV fetch failed: ${res.status} ${res.statusText}`);
+    const text = await res.text();
+    return parseCsvToObjects(text);
+  }
 
-    const storageKey = String(manifest.storageKey || "").trim();
-    const sources = Array.isArray(manifest.sources) ? manifest.sources : [];
+  function parseCsvToObjects(csvText) {
+    // Simple RFC4180-ish parser
+    const rows = [];
+    let row = [];
+    let cur = "";
+    let inQ = false;
 
-    if (!storageKey) {
-      renderEmpty("cards-manifest.json の storageKey が空です。");
-      return;
-    }
-    if (!sources.length) {
-      renderEmpty("cards-manifest.json の sources が空です。");
-      return;
-    }
+    for (let i = 0; i < csvText.length; i++) {
+      const ch = csvText[i];
+      const next = csvText[i + 1];
 
-    const counts = loadCounts(storageKey);
-
-    // sources から cards.csv を集める（片方失敗しても継続）
-    const allCards = [];
-    const errors = [];
-
-    for (const s of sources) {
-      const sourceId = String(s?.id ?? "").trim();
-      const cardsCsv = String(s?.cardsCsv ?? "").trim();
-
-      if (!sourceId || !cardsCsv) {
-        errors.push(`[manifest] source entry missing id/cardsCsv: ${JSON.stringify(s)}`);
+      if (inQ) {
+        if (ch === '"' && next === '"') { cur += '"'; i++; continue; }
+        if (ch === '"') { inQ = false; continue; }
+        cur += ch;
         continue;
       }
 
-      try {
-        const raw = await window.CSVUtil.load(cardsCsv);
-        const normalized = (raw || [])
-          .map((r) => {
-            const c = normalizeCardRow(r);
-            return { ...c, _sourceId: sourceId };
-          })
-          .filter((c) => c.id && (c.rarity === 3 || c.rarity === 4 || c.rarity === 5) && c.img);
+      if (ch === '"') { inQ = true; continue; }
+      if (ch === ",") { row.push(cur); cur = ""; continue; }
+      if (ch === "\r") continue;
+      if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; continue; }
+      cur += ch;
+    }
+    row.push(cur);
+    if (row.length > 1 || row[0] !== "") rows.push(row);
 
-        allCards.push(...normalized);
-        console.log(`[cards-hub] loaded: ${sourceId} cards=${normalized.length}`);
-      } catch (e) {
-        errors.push(`[cardsCsv] load failed: ${sourceId} (${cardsCsv}) -> ${e?.message ?? e}`);
-        console.warn("[cards-hub] cardsCsv load failed:", sourceId, cardsCsv, e);
+    if (!rows.length) return [];
+    const headers = rows[0].map((h) => String(h).trim());
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const o = {};
+      for (let c = 0; c < headers.length; c++) {
+        o[headers[c]] = rows[r][c] ?? "";
+      }
+      out.push(o);
+    }
+    return out;
+  }
+
+  // ===== Manifest =====
+  async function loadManifest() {
+    const url = new URL("./cards-manifest.json", location.href);
+    // キャッシュ回避
+    url.searchParams.set("v", String(Date.now()));
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status} ${res.statusText}`);
+    return await res.json();
+  }
+
+  // ===== State =====
+  let MANIFEST = null;
+  let COUNTS = {};
+  let ALL = []; // merged cards
+  // card shape: { id, rarity, name, img, wiki, weight, sourceId, sourceTitle }
+
+  function normalizeCardRow(r, source) {
+    const id = String(r.id ?? "").trim();
+    const rarity = Number(r.rarity) || 0;
+    const name = String(r.name ?? "").trim();
+    const img = String(r.img ?? "").trim();
+    const wiki = String(r.wiki ?? "").trim();
+    const weight = Number(r.weight ?? 1) || 1;
+    return {
+      id,
+      rarity,
+      name,
+      img,
+      wiki,
+      weight,
+      sourceId: source.id,
+      sourceTitle: source.title,
+    };
+  }
+
+  // ===== Render =====
+  function buildSourceFilterOptions(sources) {
+    if (!srcFilterEl) return;
+    // keep "all" first
+    const current = srcFilterEl.value || "all";
+    srcFilterEl.innerHTML = `<option value="all">全ソース</option>` +
+      sources.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`).join("");
+    srcFilterEl.value = current;
+  }
+
+  function passesFilters(card) {
+    const q = (qEl?.value ?? "").trim().toLowerCase();
+    const src = srcFilterEl?.value ?? "all";
+    const own = ownFilterEl?.value ?? "all";
+
+    if (src !== "all" && card.sourceId !== src) return false;
+
+    const ownedN = Number(COUNTS[card.id] ?? 0);
+    if (own === "owned" && ownedN <= 0) return false;
+    if (own === "unowned" && ownedN > 0) return false;
+
+    if (q) {
+      const hay = `${card.name} ${card.sourceId} ${card.sourceTitle} ${card.wiki}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  function render() {
+    if (!sourcesEl) return;
+
+    const sources = MANIFEST?.sources || [];
+    const filtered = ALL.filter(passesFilters);
+
+    // Status counts
+    const total = ALL.length;
+    const owned = ALL.reduce((acc, c) => acc + (Number(COUNTS[c.id] ?? 0) > 0 ? 1 : 0), 0);
+    setStatusTotal(total);
+    setStatusOwned(owned);
+
+    // group by source
+    const bySrc = new Map();
+    for (const s of sources) bySrc.set(s.id, []);
+    for (const c of filtered) {
+      if (!bySrc.has(c.sourceId)) bySrc.set(c.sourceId, []);
+      bySrc.get(c.sourceId).push(c);
+    }
+
+    sourcesEl.innerHTML = sources.map((s) => {
+      const list = bySrc.get(s.id) || [];
+      const ownedIn = list.reduce((acc, c) => acc + (Number(COUNTS[c.id] ?? 0) > 0 ? 1 : 0), 0);
+
+      const items = list.map((c) => {
+        const n = Number(COUNTS[c.id] ?? 0);
+        const ownedCls = n > 0 ? "owned" : "unowned";
+        const rarity = c.rarity ? `★${c.rarity}` : "";
+
+        const wikiLink = c.wiki
+          ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">wiki</a>`
+          : "";
+
+        const img = c.img
+          ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
+          : `<div class="noimg">NO IMAGE</div>`;
+
+        return `
+          <div class="card ${ownedCls}">
+            <div class="thumb">${img}</div>
+            <div class="meta">
+              <div class="name">${escapeHtml(c.name || "(no name)")}</div>
+              <div class="sub">
+                <span class="tag">${escapeHtml(s.id)}</span>
+                <span class="tag">${escapeHtml(rarity)}</span>
+                <span class="tag">所持:${n}</span>
+                ${wikiLink}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // data-open for expand/collapse
+      return `
+        <section class="src" data-src="${escapeHtml(s.id)}" data-open="1">
+          <header class="src-head">
+            <button class="src-toggle" type="button" data-toggle="${escapeHtml(s.id)}">
+              ${escapeHtml(s.title)} <span class="src-count">(${ownedIn}/${list.length})</span>
+            </button>
+          </header>
+          <div class="src-body">
+            ${items || `<div class="empty">該当カードがありません</div>`}
+          </div>
+        </section>
+      `;
+    }).join("");
+
+    // bind toggles
+    sourcesEl.querySelectorAll("[data-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-toggle");
+        const sec = sourcesEl.querySelector(`.src[data-src="${CSS.escape(id)}"]`);
+        if (!sec) return;
+        const open = sec.getAttribute("data-open") === "1";
+        sec.setAttribute("data-open", open ? "0" : "1");
+        const body = sec.querySelector(".src-body");
+        if (body) body.style.display = open ? "none" : "";
+      });
+    });
+  }
+
+  function expandAll(open) {
+    if (!sourcesEl) return;
+    sourcesEl.querySelectorAll(".src").forEach((sec) => {
+      sec.setAttribute("data-open", open ? "1" : "0");
+      const body = sec.querySelector(".src-body");
+      if (body) body.style.display = open ? "" : "none";
+    });
+  }
+
+  // ===== Load pipeline =====
+  async function reloadAll() {
+    if (errorBoxEl) { errorBoxEl.style.display = "none"; errorBoxEl.textContent = ""; }
+    setStatusData("manifest 読み込み中…");
+    setStatusOwned("--");
+    setStatusTotal("--");
+    if (sourcesEl) sourcesEl.innerHTML = "";
+
+    MANIFEST = await loadManifest();
+
+    if (!MANIFEST?.storageKey) throw new Error("manifest: storageKey がありません");
+    if (!Array.isArray(MANIFEST.sources) || MANIFEST.sources.length === 0) {
+      throw new Error("manifest: sources がありません");
+    }
+
+    COUNTS = loadCounts(MANIFEST.storageKey);
+    buildSourceFilterOptions(MANIFEST.sources);
+
+    setStatusData("cards.csv 読み込み中…");
+
+    const merged = [];
+    for (const src of MANIFEST.sources) {
+      if (!src.id || !src.cardsCsv) continue;
+      const rows = await loadCsv(src.cardsCsv);
+      for (const r of rows) {
+        const c = normalizeCardRow(r, src);
+        if (!c.id) continue;
+        merged.push(c);
       }
     }
 
-    if (errors.length) {
-      console.groupCollapsed("%c[cards-hub] WARN", "color:#ffd54a;font-weight:900;");
-      errors.forEach((m) => console.warn(m));
-      console.groupEnd();
-    }
-
-    renderCards({ manifest, allCards, counts });
-  } catch (e) {
-    console.error(e);
-    renderEmpty(`読み込みに失敗しました: ${e?.message ?? e}`);
+    ALL = merged;
+    setStatusData("OK");
+    render();
   }
-}
 
-boot();
+  // ===== Events =====
+  function bindEvents() {
+    btnReload?.addEventListener("click", () => reloadAll().catch((e) => showError("再読込に失敗しました", e)));
+    btnExpandAll?.addEventListener("click", () => expandAll(true));
+    btnCollapseAll?.addEventListener("click", () => expandAll(false));
+
+    qEl?.addEventListener("input", () => render());
+    srcFilterEl?.addEventListener("change", () => render());
+    ownFilterEl?.addEventListener("change", () => render());
+  }
+
+  // ===== Boot =====
+  document.addEventListener("DOMContentLoaded", () => {
+    bindEvents();
+    reloadAll().catch((e) => showError("初期ロードに失敗しました", e));
+  });
+})();
