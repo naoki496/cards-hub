@@ -1,34 +1,83 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>カード図鑑</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#070a12" />
+  <title>カード図鑑 | 八東国語LOBBY</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 
 <body>
-  <h1>カード図鑑</h1>
-
-  <div class="panel">
-    <div class="panel-inner">
-
-      <p style="opacity:.8;font-size:13px;margin:0 0 10px;">
-        集めたカードがここに表示されます。
-      </p>
-
-      <div id="cardGrid" class="card-grid"></div>
-
-      <div style="margin-top:14px;">
-        <a href="./index.html" style="color:#d4af37;text-decoration:none;">
-          ← HUBへ戻る
-        </a>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <div class="brand-title">カード図鑑</div>
+        <div class="brand-sub">CARD ARCHIVE / HK LOBBY</div>
       </div>
 
+      <div class="top-actions">
+        <button id="btnReload" class="pill" type="button">再読込</button>
+        <button id="btnExpandAll" class="pill" type="button">全展開</button>
+        <button id="btnCollapseAll" class="pill" type="button">全折り畳み</button>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <!-- 必ずこの順番で読み込む -->
+  <main class="wrap">
+    <!-- Status -->
+    <section class="panel" aria-label="ステータス">
+      <div class="panel-inner">
+        <div class="status-row">
+          <div class="status-item">
+            <div class="k">データ</div>
+            <div class="v" id="statusData">読み込み中…</div>
+          </div>
+          <div class="status-item">
+            <div class="k">所持</div>
+            <div class="v" id="statusOwned">--</div>
+          </div>
+          <div class="status-item">
+            <div class="k">総数</div>
+            <div class="v" id="statusTotal">--</div>
+          </div>
+        </div>
+
+        <!-- ④: 「※カード所持は～」は削除 -->
+
+        <div id="errorBox" class="error" style="display:none;"></div>
+      </div>
+    </section>
+
+    <!-- Search / Filters -->
+    <section class="panel" aria-label="検索と絞り込み">
+      <div class="panel-inner">
+        <div class="controls">
+          <input id="q" class="input" type="search" placeholder="検索（名前 / source / wiki）" autocomplete="off" />
+          <select id="srcFilter" class="select" aria-label="ソース絞り込み">
+            <option value="all">全ソース</option>
+          </select>
+          <select id="ownFilter" class="select" aria-label="所持絞り込み">
+            <option value="all">所持/未所持</option>
+            <option value="owned">所持のみ</option>
+            <option value="unowned">未所持のみ</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sources -->
+    <section id="sources" class="grid" aria-label="ソース一覧">
+      <!-- JS inject -->
+    </section>
+
+    <footer class="foot">
+      <div>更新が反映されない場合は URL 末尾に <code>?v=1</code> を付けてください。</div>
+      <div class="foot-link"><a href="./index.html">← HUBへ戻る</a></div>
+    </footer>
+  </main>
+
+  <!-- csv.js を使う構成にしておく（既存流用の前提維持） -->
   <script src="./csv.js"></script>
   <script src="./collection.js"></script>
 </body>
