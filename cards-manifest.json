@@ -8,12 +8,6 @@
       "title": "古文単語マスター",
       "home": "https://naoki496.github.io/kobun-quiz/",
       "csv": "https://naoki496.github.io/kobun-quiz/cards.csv"
-    },
-    {
-      "namespace": "bungaku",
-      "title": "文学史知識マスター",
-      "home": "https://naoki496.github.io/bungakusi-quiz/",
-      "csv": "https://naoki496.github.io/kobun-quiz/cards.csv"
     }
   ]
 }
