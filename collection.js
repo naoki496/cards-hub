@@ -1,42 +1,44 @@
-/* collection.js (cards-hub) */
+/* cards-hub/collection.js
+   - cards-manifest.json を読み込み
+   - sources[].cardsCsv を順に読み込み
+   - localStorage(共通キー)の所持数を反映
+   - 検索 / 所持フィルタ / ソースフィルタ
+   - 全展開 / 全折り畳み / 再読込
+*/
+
 (() => {
   "use strict";
 
   // ===== DOM =====
-  const $ = (sel) => document.querySelector(sel);
-  const statusDataEl  = $("#statusData");
-  const statusOwnedEl = $("#statusOwned");
-  const statusTotalEl = $("#statusTotal");
-  const sourcesEl     = $("#sources");
-  const qEl           = $("#q");
-  const srcFilterEl   = $("#srcFilter");
-  const ownFilterEl   = $("#ownFilter");
-  const errorBoxEl    = $("#errorBox");
+  const elSources = document.getElementById("sources");
+  const elQ = document.getElementById("q");
+  const elSrcFilter = document.getElementById("srcFilter");
+  const elOwnFilter = document.getElementById("ownFilter");
+  const elStatusData = document.getElementById("statusData");
+  const elStatusOwned = document.getElementById("statusOwned");
+  const elStatusTotal = document.getElementById("statusTotal");
+  const elErrorBox = document.getElementById("errorBox");
 
-  const btnReload     = $("#btnReload");
-  const btnExpandAll  = $("#btnExpandAll");
-  const btnCollapseAll= $("#btnCollapseAll");
+  const btnReload = document.getElementById("btnReload");
+  const btnExpandAll = document.getElementById("btnExpandAll");
+  const btnCollapseAll = document.getElementById("btnCollapseAll");
 
-  // ===== Helpers =====
-  function showError(msg, err) {
-    console.error(msg, err || "");
-    if (errorBoxEl) {
-      errorBoxEl.style.display = "";
-      errorBoxEl.textContent = `${msg}${err ? "\n" + (err?.message ?? String(err)) : ""}`;
-    }
-    if (statusDataEl) statusDataEl.textContent = "エラー";
-  }
+  // ===== State =====
+  let manifest = null;
 
-  function setStatusData(text) {
-    if (statusDataEl) statusDataEl.textContent = text;
-  }
-  function setStatusOwned(n) {
-    if (statusOwnedEl) statusOwnedEl.textContent = String(n);
-  }
-  function setStatusTotal(n) {
-    if (statusTotalEl) statusTotalEl.textContent = String(n);
-  }
+  /** @type {{storageKey:string, sources:Array<{id:string,title:string,cardsCsv:string}>}} */
+  let cfg = { storageKey: "hklobby.v1.cardCounts", sources: [] };
 
+  /** counts: { [cardId]: number } */
+  let COUNTS = {};
+
+  /** sourcesData: [{id,title,cardsCsv, cards:[Card]}] */
+  let sourcesData = [];
+
+  /** UI state */
+  let expanded = new Set(); // sourceId set
+
+  // ===== Utils =====
   function escapeHtml(str) {
     return String(str ?? "")
       .replace(/&/g, "&amp;")
@@ -46,38 +48,36 @@
       .replace(/'/g, "&#39;");
   }
 
-  // ===== localStorage (safe) =====
-  function storageAvailable() {
+  function showError(msg) {
+    if (!elErrorBox) return;
+    elErrorBox.style.display = "block";
+    elErrorBox.textContent = String(msg ?? "エラーが発生しました");
+  }
+
+  function clearError() {
+    if (!elErrorBox) return;
+    elErrorBox.style.display = "none";
+    elErrorBox.textContent = "";
+  }
+
+  function storageGet(key) {
     try {
-      const x = "__storage_test__";
-      localStorage.setItem(x, x);
-      localStorage.removeItem(x);
-      return true;
+      return window.localStorage.getItem(key);
     } catch {
-      return false;
+      return null;
     }
   }
-  const StorageAdapter = (() => {
-    const mem = new Map();
-    const ok = storageAvailable();
-    return {
-      get(key) {
-        if (ok) return localStorage.getItem(key);
-        return mem.get(key) ?? null;
-      },
-      set(key, value) {
-        try {
-          if (ok) localStorage.setItem(key, value);
-          else mem.set(key, value);
-        } catch {
-          mem.set(key, value);
-        }
-      },
-    };
-  })();
+
+  function storageSet(key, val) {
+    try {
+      window.localStorage.setItem(key, val);
+    } catch {
+      // ignore
+    }
+  }
 
   function loadCounts(storageKey) {
-    const raw = StorageAdapter.get(storageKey);
+    const raw = storageGet(storageKey);
     if (!raw) return {};
     try {
       const obj = JSON.parse(raw);
@@ -87,268 +87,343 @@
     }
   }
 
-  // ===== CSV load (CSVUtil if available, else fallback parser) =====
-  async function loadCsv(url) {
-    // cache bust (軽い保険)
-    const u = new URL(url, location.href);
-    if (!u.searchParams.has("v")) u.searchParams.set("v", String(Date.now()));
-
-    // Prefer CSVUtil (your csv.js)
-    if (window.CSVUtil && typeof window.CSVUtil.load === "function") {
-      return await window.CSVUtil.load(u.toString());
-    }
-
-    // Fallback: minimal CSV parser (commas + quotes)
-    const res = await fetch(u.toString(), { cache: "no-store" });
-    if (!res.ok) throw new Error(`CSV fetch failed: ${res.status} ${res.statusText}`);
-    const text = await res.text();
-    return parseCsvToObjects(text);
+  function saveCounts(storageKey, counts) {
+    storageSet(storageKey, JSON.stringify(counts ?? {}));
   }
 
-  function parseCsvToObjects(csvText) {
-    // Simple RFC4180-ish parser
-    const rows = [];
-    let row = [];
-    let cur = "";
-    let inQ = false;
-
-    for (let i = 0; i < csvText.length; i++) {
-      const ch = csvText[i];
-      const next = csvText[i + 1];
-
-      if (inQ) {
-        if (ch === '"' && next === '"') { cur += '"'; i++; continue; }
-        if (ch === '"') { inQ = false; continue; }
-        cur += ch;
-        continue;
-      }
-
-      if (ch === '"') { inQ = true; continue; }
-      if (ch === ",") { row.push(cur); cur = ""; continue; }
-      if (ch === "\r") continue;
-      if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; continue; }
-      cur += ch;
-    }
-    row.push(cur);
-    if (row.length > 1 || row[0] !== "") rows.push(row);
-
-    if (!rows.length) return [];
-    const headers = rows[0].map((h) => String(h).trim());
-    const out = [];
-    for (let r = 1; r < rows.length; r++) {
-      const o = {};
-      for (let c = 0; c < headers.length; c++) {
-        o[headers[c]] = rows[r][c] ?? "";
-      }
-      out.push(o);
-    }
-    return out;
-  }
-
-  // ===== Manifest =====
-  async function loadManifest() {
-    const url = new URL("./cards-manifest.json", location.href);
-    // キャッシュ回避
-    url.searchParams.set("v", String(Date.now()));
-    const res = await fetch(url.toString(), { cache: "no-store" });
-    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status} ${res.statusText}`);
-    return await res.json();
-  }
-
-  // ===== State =====
-  let MANIFEST = null;
-  let COUNTS = {};
-  let ALL = []; // merged cards
-  // card shape: { id, rarity, name, img, wiki, weight, sourceId, sourceTitle }
-
-  function normalizeCardRow(r, source) {
+  function normalizeCardRow(r) {
+    // cards.csv: id, rarity, name, img, wiki, weight
     const id = String(r.id ?? "").trim();
-    const rarity = Number(r.rarity) || 0;
+    const rarity = Number(r.rarity);
     const name = String(r.name ?? "").trim();
     const img = String(r.img ?? "").trim();
     const wiki = String(r.wiki ?? "").trim();
-    const weight = Number(r.weight ?? 1) || 1;
-    return {
-      id,
-      rarity,
-      name,
-      img,
-      wiki,
-      weight,
-      sourceId: source.id,
-      sourceTitle: source.title,
-    };
+    const weightRaw = r.weight ?? "";
+    const weight = Number(weightRaw) || 1;
+    return { id, rarity, name, img, wiki, weight };
+  }
+
+  function csvLoad(url) {
+    // csv.js がある前提（既存流用）
+    if (window.CSVUtil && typeof window.CSVUtil.load === "function") {
+      return window.CSVUtil.load(url);
+    }
+    // フォールバック（最低限）
+    return fetch(url, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`CSV fetch failed: ${r.status} ${url}`);
+        return r.text();
+      })
+      .then((text) => parseCsvSimple(text));
+  }
+
+  // 超簡易CSV（カンマ区切り/ダブルクォート対応の軽量版）
+  function parseCsvSimple(text) {
+    const lines = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const rows = [];
+    if (!lines.length) return rows;
+
+    const header = splitCsvLine(lines[0]).map((h) => h.trim());
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line || !line.trim()) continue;
+      const cols = splitCsvLine(line);
+      const obj = {};
+      for (let k = 0; k < header.length; k++) obj[header[k]] = cols[k] ?? "";
+      rows.push(obj);
+    }
+    return rows;
+  }
+
+  function splitCsvLine(line) {
+    const s = String(line ?? "");
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inQ) {
+        if (ch === '"') {
+          const next = s[i + 1];
+          if (next === '"') {
+            cur += '"';
+            i++;
+          } else {
+            inQ = false;
+          }
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === ",") {
+          out.push(cur);
+          cur = "";
+        } else if (ch === '"') {
+          inQ = true;
+        } else {
+          cur += ch;
+        }
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  function buildSearchText(card, source) {
+    // ⑥ 画面表示からは消すが、検索対象としては保持（実用性優先）
+    const parts = [
+      card?.name ?? "",
+      card?.wiki ?? "",
+      source?.id ?? "",
+      source?.title ?? "",
+      `★${card?.rarity ?? ""}`,
+    ];
+    return parts.join(" ").toLowerCase();
+  }
+
+  function getOwnedCountForSource(source) {
+    let owned = 0;
+    for (const c of source.cards) {
+      const n = Number(COUNTS[c.id] ?? 0);
+      if (n > 0) owned++;
+    }
+    return owned;
+  }
+
+  function getTotalOwned() {
+    let owned = 0;
+    for (const s of sourcesData) owned += getOwnedCountForSource(s);
+    return owned;
+  }
+
+  function getTotalCards() {
+    let total = 0;
+    for (const s of sourcesData) total += s.cards.length;
+    return total;
   }
 
   // ===== Render =====
-  function buildSourceFilterOptions(sources) {
-    if (!srcFilterEl) return;
-    // keep "all" first
-    const current = srcFilterEl.value || "all";
-    srcFilterEl.innerHTML = `<option value="all">全ソース</option>` +
-      sources.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`).join("");
-    srcFilterEl.value = current;
-  }
-
-  function passesFilters(card) {
-    const q = (qEl?.value ?? "").trim().toLowerCase();
-    const src = srcFilterEl?.value ?? "all";
-    const own = ownFilterEl?.value ?? "all";
-
-    if (src !== "all" && card.sourceId !== src) return false;
-
-    const ownedN = Number(COUNTS[card.id] ?? 0);
-    if (own === "owned" && ownedN <= 0) return false;
-    if (own === "unowned" && ownedN > 0) return false;
-
-    if (q) {
-      const hay = `${card.name} ${card.sourceId} ${card.sourceTitle} ${card.wiki}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  }
-
   function render() {
-    if (!sourcesEl) return;
+    if (!elSources) return;
 
-    const sources = MANIFEST?.sources || [];
-    const filtered = ALL.filter(passesFilters);
+    const q = String(elQ?.value ?? "").trim().toLowerCase();
+    const srcFilter = String(elSrcFilter?.value ?? "all");
+    const ownFilter = String(elOwnFilter?.value ?? "all");
 
-    // Status counts
-    const total = ALL.length;
-    const owned = ALL.reduce((acc, c) => acc + (Number(COUNTS[c.id] ?? 0) > 0 ? 1 : 0), 0);
-    setStatusTotal(total);
-    setStatusOwned(owned);
+    // Status
+    if (elStatusOwned) elStatusOwned.textContent = String(getTotalOwned());
+    if (elStatusTotal) elStatusTotal.textContent = String(getTotalCards());
 
-    // group by source
-    const bySrc = new Map();
-    for (const s of sources) bySrc.set(s.id, []);
-    for (const c of filtered) {
-      if (!bySrc.has(c.sourceId)) bySrc.set(c.sourceId, []);
-      bySrc.get(c.sourceId).push(c);
-    }
+    const blocks = sourcesData
+      .filter((s) => (srcFilter === "all" ? true : s.id === srcFilter))
+      .map((s) => {
+        const isOpen = expanded.has(s.id);
 
-    sourcesEl.innerHTML = sources.map((s) => {
-      const list = bySrc.get(s.id) || [];
-      const ownedIn = list.reduce((acc, c) => acc + (Number(COUNTS[c.id] ?? 0) > 0 ? 1 : 0), 0);
+        // cards filter
+        const list = s.cards.filter((c) => {
+          const n = Number(COUNTS[c.id] ?? 0);
+          if (ownFilter === "owned" && !(n > 0)) return false;
+          if (ownFilter === "unowned" && !(n <= 0)) return false;
 
-      const items = list.map((c) => {
-        const n = Number(COUNTS[c.id] ?? 0);
-        const ownedCls = n > 0 ? "owned" : "unowned";
-        const rarity = c.rarity ? `★${c.rarity}` : "";
+          if (q) {
+            const hay = buildSearchText(c, s);
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
 
-        const wikiLink = c.wiki
-          ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">wiki</a>`
-          : "";
+        const ownedCount = getOwnedCountForSource(s);
+        const total = s.cards.length;
 
-        const img = c.img
-          ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
-          : `<div class="noimg">NO IMAGE</div>`;
+        const items = list
+          .map((c) => {
+            const n = Number(COUNTS[c.id] ?? 0);
+            const ownedCls = n > 0 ? "owned" : "unowned";
+            const rarityNum = Number(c.rarity || 0);
+            const rarityLabel = rarityNum ? `★${rarityNum}` : "";
+            const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
+
+            const wikiLink = c.wiki
+              ? `<a class="mini-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">▶詳細を見る</a>`
+              : "";
+
+            const img = c.img
+              ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
+              : `<div class="noimg">NO IMAGE</div>`;
+
+            return `
+              <div class="card ${ownedCls} ${rarityCls}">
+                <div class="thumb">${img}</div>
+                <div class="meta">
+                  <div class="name">${escapeHtml(c.name || "(no name)")}</div>
+                  <div class="sub">
+                    <span class="tag">${escapeHtml(rarityLabel)}</span>
+                    <span class="tag">所持:${n}</span>
+                    ${wikiLink}
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        const emptyText =
+          q || ownFilter !== "all"
+            ? `<div class="empty">条件に合うカードがありません。</div>`
+            : `<div class="empty">このソースにはカードがありません。</div>`;
 
         return `
-          <div class="card ${ownedCls}">
-            <div class="thumb">${img}</div>
-            <div class="meta">
-              <div class="name">${escapeHtml(c.name || "(no name)")}</div>
-              <div class="sub">
-                <span class="tag">${escapeHtml(s.id)}</span>
-                <span class="tag">${escapeHtml(rarity)}</span>
-                <span class="tag">所持:${n}</span>
-                ${wikiLink}
+          <section class="src-block">
+            <button class="src-toggle cyber" type="button" data-toggle="${escapeHtml(s.id)}" aria-expanded="${isOpen}">
+              <div class="src-title">${escapeHtml(s.title)}</div>
+              <div class="src-meta">${ownedCount} / ${total}</div>
+            </button>
+
+            <div class="src-body" data-body="${escapeHtml(s.id)}" style="display:${isOpen ? "block" : "none"};">
+              <div class="card-grid">
+                ${items || emptyText}
               </div>
             </div>
-          </div>
+          </section>
         `;
-      }).join("");
+      })
+      .join("");
 
-      // data-open for expand/collapse
-      return `
-        <section class="src" data-src="${escapeHtml(s.id)}" data-open="1">
-          <header class="src-head">
-            <button class="src-toggle" type="button" data-toggle="${escapeHtml(s.id)}">
-              ${escapeHtml(s.title)} <span class="src-count">(${ownedIn}/${list.length})</span>
-            </button>
-          </header>
-          <div class="src-body">
-            ${items || `<div class="empty">該当カードがありません</div>`}
-          </div>
-        </section>
-      `;
-    }).join("");
+    elSources.innerHTML = blocks || `<div class="empty">表示できるデータがありません。</div>`;
 
     // bind toggles
-    sourcesEl.querySelectorAll("[data-toggle]").forEach((btn) => {
+    Array.from(elSources.querySelectorAll("[data-toggle]")).forEach((btn) => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-toggle");
-        const sec = sourcesEl.querySelector(`.src[data-src="${CSS.escape(id)}"]`);
-        if (!sec) return;
-        const open = sec.getAttribute("data-open") === "1";
-        sec.setAttribute("data-open", open ? "0" : "1");
-        const body = sec.querySelector(".src-body");
-        if (body) body.style.display = open ? "none" : "";
+        if (!id) return;
+        if (expanded.has(id)) expanded.delete(id);
+        else expanded.add(id);
+        render();
       });
     });
   }
 
-  function expandAll(open) {
-    if (!sourcesEl) return;
-    sourcesEl.querySelectorAll(".src").forEach((sec) => {
-      sec.setAttribute("data-open", open ? "1" : "0");
-      const body = sec.querySelector(".src-body");
-      if (body) body.style.display = open ? "" : "none";
-    });
+  function rebuildSourceFilter() {
+    if (!elSrcFilter) return;
+    const cur = elSrcFilter.value || "all";
+    const opts = [
+      `<option value="all">全ソース</option>`,
+      ...sourcesData.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`),
+    ];
+    elSrcFilter.innerHTML = opts.join("");
+    // なるべく値を維持
+    const exists = Array.from(elSrcFilter.options).some((o) => o.value === cur);
+    elSrcFilter.value = exists ? cur : "all";
   }
 
-  // ===== Load pipeline =====
-  async function reloadAll() {
-    if (errorBoxEl) { errorBoxEl.style.display = "none"; errorBoxEl.textContent = ""; }
-    setStatusData("manifest 読み込み中…");
-    setStatusOwned("--");
-    setStatusTotal("--");
-    if (sourcesEl) sourcesEl.innerHTML = "";
-
-    MANIFEST = await loadManifest();
-
-    if (!MANIFEST?.storageKey) throw new Error("manifest: storageKey がありません");
-    if (!Array.isArray(MANIFEST.sources) || MANIFEST.sources.length === 0) {
-      throw new Error("manifest: sources がありません");
-    }
-
-    COUNTS = loadCounts(MANIFEST.storageKey);
-    buildSourceFilterOptions(MANIFEST.sources);
-
-    setStatusData("cards.csv 読み込み中…");
-
-    const merged = [];
-    for (const src of MANIFEST.sources) {
-      if (!src.id || !src.cardsCsv) continue;
-      const rows = await loadCsv(src.cardsCsv);
-      for (const r of rows) {
-        const c = normalizeCardRow(r, src);
-        if (!c.id) continue;
-        merged.push(c);
-      }
-    }
-
-    ALL = merged;
-    setStatusData("OK");
+  function expandAll() {
+    expanded = new Set(sourcesData.map((s) => s.id));
+    render();
+  }
+  function collapseAll() {
+    expanded = new Set();
     render();
   }
 
-  // ===== Events =====
-  function bindEvents() {
-    btnReload?.addEventListener("click", () => reloadAll().catch((e) => showError("再読込に失敗しました", e)));
-    btnExpandAll?.addEventListener("click", () => expandAll(true));
-    btnCollapseAll?.addEventListener("click", () => expandAll(false));
+  // ===== Load =====
+  async function loadManifest() {
+    const url = new URL("./cards-manifest.json", location.href).toString();
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`manifest load failed: ${res.status}`);
+    return res.json();
+  }
 
-    qEl?.addEventListener("input", () => render());
-    srcFilterEl?.addEventListener("change", () => render());
-    ownFilterEl?.addEventListener("change", () => render());
+  async function loadAll() {
+    clearError();
+    if (elStatusData) elStatusData.textContent = "読み込み中…";
+
+    manifest = await loadManifest();
+    cfg.storageKey = String(manifest?.storageKey ?? "hklobby.v1.cardCounts");
+    cfg.sources = Array.isArray(manifest?.sources) ? manifest.sources : [];
+
+    // counts
+    COUNTS = loadCounts(cfg.storageKey);
+
+    // sources load
+    const out = [];
+    for (const s of cfg.sources) {
+      const sid = String(s?.id ?? "").trim();
+      const title = String(s?.title ?? sid).trim();
+      const cardsCsv = String(s?.cardsCsv ?? "").trim();
+      if (!sid || !cardsCsv) continue;
+
+      let raw = [];
+      try {
+        raw = await csvLoad(cardsCsv);
+      } catch (e) {
+        console.warn("[cards] load failed:", sid, cardsCsv, e);
+        // 1ソース落ちても全体は生かす
+        raw = [];
+      }
+
+      const cards = [];
+      for (const r of raw) {
+        try {
+          const c = normalizeCardRow(r);
+          if (!c.id) continue;
+          cards.push(c);
+        } catch (_) {}
+      }
+
+      out.push({ id: sid, title, cardsCsv, cards });
+    }
+
+    sourcesData = out;
+
+    // 初期：最初は閉じておく（必要なら expandAll() に変えてOK）
+    expanded = new Set();
+
+    rebuildSourceFilter();
+    render();
+
+    if (elStatusData) elStatusData.textContent = "OK";
+  }
+
+  // ===== Events =====
+  function bind() {
+    if (elQ) elQ.addEventListener("input", () => render());
+    if (elSrcFilter) elSrcFilter.addEventListener("change", () => render());
+    if (elOwnFilter) elOwnFilter.addEventListener("change", () => render());
+
+    if (btnReload) {
+      btnReload.addEventListener("click", async () => {
+        try {
+          await loadAll();
+        } catch (e) {
+          showError(e?.message ?? e);
+          if (elStatusData) elStatusData.textContent = "失敗";
+        }
+      });
+    }
+
+    if (btnExpandAll) btnExpandAll.addEventListener("click", expandAll);
+    if (btnCollapseAll) btnCollapseAll.addEventListener("click", collapseAll);
   }
 
   // ===== Boot =====
-  document.addEventListener("DOMContentLoaded", () => {
-    bindEvents();
-    reloadAll().catch((e) => showError("初期ロードに失敗しました", e));
-  });
+  (async function boot() {
+    try {
+      bind();
+      await loadAll();
+    } catch (e) {
+      console.error(e);
+      showError(e?.message ?? e);
+      if (elStatusData) elStatusData.textContent = "失敗";
+    }
+  })();
+
+  // （将来用）counts をここからいじる場合のAPI：今は使わない
+  window.__HK_CARDS_HUB__ = {
+    getCounts: () => ({ ...(COUNTS || {}) }),
+    setCounts: (next) => {
+      COUNTS = next && typeof next === "object" ? next : {};
+      saveCounts(cfg.storageKey, COUNTS);
+      render();
+    },
+  };
 })();
