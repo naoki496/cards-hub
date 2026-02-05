@@ -9,10 +9,10 @@
    - 所持(n>0): 画像/名前/▶詳細を見る を表示
    - 未所持(n==0): 画像はロック枠、名前は「？？？？？」、詳細リンク無し
 
-   ✅ 重要修正（1）
-   - 「カード全体リンク <a>」の内側に「▶詳細を見る <a>」を置くと a 入れ子になり、
-     ブラウザの自動補正で “謎の空白クリック領域” が発生する。
-   - 対策：外側がリンクの時、内側は <span class="miniLink"> にして a 入れ子を排除。
+   ✅ UI
+   - 開閉ヘッダの装飾は style.css が想定する
+     .src-block / .src-toggle.cyber / .src-title / .src-meta / .src-body / .card-grid
+     に合わせる（ここが崩れると“ただのボタン”になる）
 */
 (() => {
   "use strict";
@@ -23,7 +23,7 @@
   const elSrcFilter = document.getElementById("srcFilter");
   const elOwnFilter = document.getElementById("ownFilter");
 
-  // ✅ 新設：ランク（暫定）
+  // ✅ ランク（暫定固定表示）
   const elStatusRank = document.getElementById("statusRank");
 
   // 既存
@@ -105,7 +105,7 @@
   function normalizeCardRow(r) {
     // cards.csv: id, rarity, name, img, wiki, weight
     const id = String(r.id ?? "").trim();
-    const rarity = Number(r.rarity);
+    const rarity = Number(r.rarity) || 0;
     const name = String(r.name ?? "").trim();
     const img = String(r.img ?? "").trim();
     const wiki = String(r.wiki ?? "").trim();
@@ -188,8 +188,6 @@
   }
 
   function buildSearchText(card, source) {
-    // ⑥ 画面表示からは消すが、検索対象としては保持（実用性優先）
-    // ※B仕様でも「未所持を名前で検索」できてしまうのが嫌なら、ここで owned を見て name を抜くのも可能
     const parts = [
       card?.name ?? "",
       card?.wiki ?? "",
@@ -229,7 +227,7 @@
     const rarityLabel = rarityNum ? `★${rarityNum}` : "";
     const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
 
-    const ownedCls = owned ? "owned" : "unowned";
+    const ownedCls = hasTruthy(owned) ? "owned" : "unowned";
     const lockedCls = owned ? "" : "locked";
 
     // ✅ 未所持は名前を伏せる
@@ -245,6 +243,7 @@
     const hasWiki = owned && !!c.wiki;
 
     // ✅ クリック導線：所持かつwikiがある時だけカード全体をリンク化
+    // ※ a 入れ子を避けるため、内側の「▶詳細を見る」は span.mini-link にする
     const wrapStart = hasWiki
       ? `<a class="card ${ownedCls} ${rarityCls} ${lockedCls}" href="${escapeHtml(
           c.wiki
@@ -252,9 +251,7 @@
       : `<div class="card ${ownedCls} ${rarityCls} ${lockedCls}">`;
     const wrapEnd = hasWiki ? `</a>` : `</div>`;
 
-    // ✅ 重要：a の入れ子禁止（＝空白クリック領域の原因を除去）
-    // 外側がリンクの時は、内側は span で「見た目だけ」出す
-    const wikiChip = hasWiki ? `<span class="miniLink">▶詳細を見る</span>` : "";
+    const wikiChip = hasWiki ? `<span class="mini-link">▶詳細を見る</span>` : "";
 
     return `
       ${wrapStart}
@@ -269,6 +266,10 @@
         </div>
       ${wrapEnd}
     `;
+  }
+
+  function hasTruthy(v) {
+    return !!v;
   }
 
   // ===== Render =====
@@ -317,23 +318,22 @@
             ? `<div class="empty">条件に合うカードがありません。</div>`
             : `<div class="empty">このソースにはカードがありません。</div>`;
 
+        // ✅ ここが“装飾が効く開閉ヘッダ”の肝：CSSの想定クラスに合わせる
         return `
-          <section class="source">
-            <header class="sourceHead">
-              <button class="toggle" type="button" data-toggle="${escapeHtml(
-                s.id
-              )}">
-                <span class="title">${escapeHtml(s.title)}</span>
-                <span class="count">${ownedCount} / ${total}</span>
-                <span class="chev">${isOpen ? "▲" : "▼"}</span>
-              </button>
-            </header>
-            <div class="sourceBody" style="display:${isOpen ? "block" : "none"}">
-              <div class="grid">
+          <div class="src-block">
+            <button class="src-toggle cyber" type="button" data-toggle="${escapeHtml(
+              s.id
+            )}">
+              <span class="src-title">${escapeHtml(s.title)}</span>
+              <span class="src-meta">${ownedCount} / ${total}</span>
+            </button>
+
+            <div class="src-body" style="display:${isOpen ? "block" : "none"}">
+              <div class="card-grid">
                 ${items || emptyText}
               </div>
             </div>
-          </section>
+          </div>
         `;
       })
       .join("");
@@ -431,7 +431,7 @@
 
     sourcesData = out;
 
-    // 初期：最初は閉じておく（必要なら expandAll() に変えてOK）
+    // 初期：閉じる（必要なら expandAll() に変えてOK）
     expanded = new Set();
 
     rebuildSourceFilter();
