@@ -87,7 +87,7 @@ body{
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  overflow:hidden;
+  .card{ overflow: visible; }
 }
 
 .panel-inner{
