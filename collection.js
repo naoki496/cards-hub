@@ -12,9 +12,8 @@
    ✅ 重要修正（1）
    - 「カード全体リンク <a>」の内側に「▶詳細を見る <a>」を置くと a 入れ子になり、
      ブラウザの自動補正で “謎の空白クリック領域” が発生する。
-   - 対策：外側がリンクの時、内側は <span class="mini-link"> にして a 入れ子を排除。
+   - 対策：外側がリンクの時、内側は <span class="miniLink"> にして a 入れ子を排除。
 */
-
 (() => {
   "use strict";
 
@@ -23,7 +22,11 @@
   const elQ = document.getElementById("q");
   const elSrcFilter = document.getElementById("srcFilter");
   const elOwnFilter = document.getElementById("ownFilter");
-  const elStatusData = document.getElementById("statusData");
+
+  // ✅ 新設：ランク（暫定）
+  const elStatusRank = document.getElementById("statusRank");
+
+  // 既存
   const elStatusOwned = document.getElementById("statusOwned");
   const elStatusTotal = document.getElementById("statusTotal");
   const elErrorBox = document.getElementById("errorBox");
@@ -34,7 +37,6 @@
 
   // ===== State =====
   let manifest = null;
-
   /** @type {{storageKey:string, sources:Array<{id:string,title:string,cardsCsv:string}>}} */
   let cfg = { storageKey: "hklobby.v1.cardCounts", sources: [] };
 
@@ -107,8 +109,10 @@
     const name = String(r.name ?? "").trim();
     const img = String(r.img ?? "").trim();
     const wiki = String(r.wiki ?? "").trim();
+
     const weightRaw = r.weight ?? "";
     const weight = Number(weightRaw) || 1;
+
     return { id, rarity, name, img, wiki, weight };
   }
 
@@ -128,7 +132,10 @@
 
   // 超簡易CSV（カンマ区切り/ダブルクォート対応の軽量版）
   function parseCsvSimple(text) {
-    const lines = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const lines = String(text ?? "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n");
     const rows = [];
     if (!lines.length) return rows;
 
@@ -136,6 +143,7 @@
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
       if (!line || !line.trim()) continue;
+
       const cols = splitCsvLine(line);
       const obj = {};
       for (let k = 0; k < header.length; k++) obj[header[k]] = cols[k] ?? "";
@@ -149,6 +157,7 @@
     const out = [];
     let cur = "";
     let inQ = false;
+
     for (let i = 0; i < s.length; i++) {
       const ch = s[i];
       if (inQ) {
@@ -228,36 +237,34 @@
 
     // ✅ 未所持は画像を出さない（ロック枠）
     const img = owned
-      ? (c.img
-          ? `<img loading="lazy" src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" />`
-          : `<div class="noimg">NO IMAGE</div>`)
-      : `<div class="locked-img" aria-label="未所持"></div>`;
+      ? c.img
+        ? `<img src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" loading="lazy">`
+        : `<div class="noimg">NO IMAGE</div>`
+      : `<div class="lockbox"><span class="lock">🔒</span></div>`;
 
     const hasWiki = owned && !!c.wiki;
 
     // ✅ クリック導線：所持かつwikiがある時だけカード全体をリンク化
     const wrapStart = hasWiki
-      ? `<a class="card-link" href="${escapeHtml(c.wiki)}" target="_blank" rel="noopener">`
-      : `<div class="card-link" tabindex="-1" aria-disabled="true">`;
+      ? `<a class="card ${ownedCls} ${rarityCls} ${lockedCls}" href="${escapeHtml(
+          c.wiki
+        )}" target="_blank" rel="noopener noreferrer">`
+      : `<div class="card ${ownedCls} ${rarityCls} ${lockedCls}">`;
     const wrapEnd = hasWiki ? `</a>` : `</div>`;
 
     // ✅ 重要：a の入れ子禁止（＝空白クリック領域の原因を除去）
     // 外側がリンクの時は、内側は span で「見た目だけ」出す
-    const wikiChip = hasWiki
-      ? `<span class="mini-link" aria-hidden="true">▶詳細を見る</span>`
-      : "";
+    const wikiChip = hasWiki ? `<span class="miniLink">▶詳細を見る</span>` : "";
 
     return `
       ${wrapStart}
-        <div class="card ${ownedCls} ${lockedCls} ${rarityCls}">
-          <div class="thumb">${img}</div>
-          <div class="meta">
-            <div class="name">${nameHtml}</div>
-            <div class="sub">
-              <span class="tag">${escapeHtml(rarityLabel)}</span>
-              <span class="tag">所持:${owned ? Number(n ?? 0) : 0}</span>
-              ${wikiChip}
-            </div>
+        <div class="thumb">${img}</div>
+        <div class="meta">
+          <div class="name">${nameHtml}</div>
+          <div class="sub">
+            <span class="rarity">${escapeHtml(rarityLabel)}</span>
+            <span class="count">所持:${owned ? Number(n ?? 0) : 0}</span>
+            ${wikiChip}
           </div>
         </div>
       ${wrapEnd}
@@ -273,6 +280,7 @@
     const ownFilter = String(elOwnFilter?.value ?? "all");
 
     // Status
+    if (elStatusRank) elStatusRank.textContent = "E"; // ✅ 暫定固定
     if (elStatusOwned) elStatusOwned.textContent = String(getTotalOwned());
     if (elStatusTotal) elStatusTotal.textContent = String(getTotalCards());
 
@@ -310,14 +318,18 @@
             : `<div class="empty">このソースにはカードがありません。</div>`;
 
         return `
-          <section class="src-block">
-            <button class="src-toggle cyber" type="button" data-toggle="${escapeHtml(s.id)}" aria-expanded="${isOpen}">
-              <div class="src-title">${escapeHtml(s.title)}</div>
-              <div class="src-meta">${ownedCount} / ${total}</div>
-            </button>
-
-            <div class="src-body" data-body="${escapeHtml(s.id)}" style="display:${isOpen ? "block" : "none"};">
-              <div class="card-grid">
+          <section class="source">
+            <header class="sourceHead">
+              <button class="toggle" type="button" data-toggle="${escapeHtml(
+                s.id
+              )}">
+                <span class="title">${escapeHtml(s.title)}</span>
+                <span class="count">${ownedCount} / ${total}</span>
+                <span class="chev">${isOpen ? "▲" : "▼"}</span>
+              </button>
+            </header>
+            <div class="sourceBody" style="display:${isOpen ? "block" : "none"}">
+              <div class="grid">
                 ${items || emptyText}
               </div>
             </div>
@@ -326,15 +338,18 @@
       })
       .join("");
 
-    elSources.innerHTML = blocks || `<div class="empty">表示できるデータがありません。</div>`;
+    elSources.innerHTML =
+      blocks || `<div class="empty">表示できるデータがありません。</div>`;
 
     // bind toggles
     Array.from(elSources.querySelectorAll("[data-toggle]")).forEach((btn) => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-toggle");
         if (!id) return;
+
         if (expanded.has(id)) expanded.delete(id);
         else expanded.add(id);
+
         render();
       });
     });
@@ -342,12 +357,17 @@
 
   function rebuildSourceFilter() {
     if (!elSrcFilter) return;
+
     const cur = elSrcFilter.value || "all";
     const opts = [
       `<option value="all">全ソース</option>`,
-      ...sourcesData.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`),
+      ...sourcesData.map(
+        (s) =>
+          `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`
+      ),
     ];
     elSrcFilter.innerHTML = opts.join("");
+
     // なるべく値を維持
     const exists = Array.from(elSrcFilter.options).some((o) => o.value === cur);
     elSrcFilter.value = exists ? cur : "all";
@@ -357,6 +377,7 @@
     expanded = new Set(sourcesData.map((s) => s.id));
     render();
   }
+
   function collapseAll() {
     expanded = new Set();
     render();
@@ -372,7 +393,6 @@
 
   async function loadAll() {
     clearError();
-    if (elStatusData) elStatusData.textContent = "読み込み中…";
 
     manifest = await loadManifest();
     cfg.storageKey = String(manifest?.storageKey ?? "hklobby.v1.cardCounts");
@@ -406,7 +426,6 @@
           cards.push(c);
         } catch (_) {}
       }
-
       out.push({ id: sid, title, cardsCsv, cards });
     }
 
@@ -417,8 +436,6 @@
 
     rebuildSourceFilter();
     render();
-
-    if (elStatusData) elStatusData.textContent = "OK";
   }
 
   // ===== Events =====
@@ -433,7 +450,6 @@
           await loadAll();
         } catch (e) {
           showError(e?.message ?? e);
-          if (elStatusData) elStatusData.textContent = "失敗";
         }
       });
     }
@@ -450,7 +466,6 @@
     } catch (e) {
       console.error(e);
       showError(e?.message ?? e);
-      if (elStatusData) elStatusData.textContent = "失敗";
     }
   })();
 
