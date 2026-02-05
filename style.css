@@ -537,3 +537,63 @@ body{
   text-decoration: underline;
   text-decoration-color: rgba(180,200,255,.5);
 }
+
+/* =========================
+   ADD (safe): hover lift + r5 pulse stabilize
+   ※ 既存CSSは削らない。末尾追記専用。
+   ========================= */
+
+/* 1) hoverで少し浮く（微アニメ） */
+.card{
+  /* 既存の overflow:hidden を維持したままでもOK。
+     発光を「外に滲ませたい」場合は、次の行のコメントを外す。 */
+  /* overflow: visible; */
+
+  transition:
+    transform .22s ease,
+    box-shadow .22s ease;
+  will-change: transform;
+}
+
+.card:hover{
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(0,0,0,.45);
+}
+
+/* 2) ★5発光（脈動）が“消える/切れる”事故を防ぐための安定化
+   - 既存 .card.r5::before を「上書き」して強制的に見えるようにする
+   - 光はカードの背面レイヤに置く（本体テキストは前面） */
+.card.r5{
+  /* 本体は前面 */
+  z-index: 1;
+}
+
+/* ★5の光レイヤを安定化（強制表示） */
+.card.r5::before{
+  /* 既存定義を上書き（opacity 0開始などを潰す） */
+  inset: -6px;                /* 外に滲ませる */
+  border-radius: 20px;
+  opacity: .85;               /* 常時可視 */
+  filter: blur(10px);
+  z-index: 0;                 /* 背面 */
+  animation: r5-pulse 2.6s ease-in-out infinite;
+}
+
+/* 3) 発光がカード中身を覆わないように、中身を前面へ */
+.card > *{
+  position: relative;
+  z-index: 1;
+}
+
+/* 4) 動きが苦手な環境では止める */
+@media (prefers-reduced-motion: reduce){
+  .card{
+    transition: none;
+  }
+  .card:hover{
+    transform: none;
+  }
+  .card.r5::before{
+    animation: none;
+  }
+}
