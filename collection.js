@@ -9,13 +9,17 @@
    - 所持(n>0): 画像/名前/▶詳細を見る を表示
    - 未所持(n==0): 画像はロック枠、名前は「？？？？？」、詳細リンク無し
 
-   ✅ UI
-   - 開閉ヘッダの装飾は style.css が想定する
-     .src-block / .src-toggle.cyber / .src-title / .src-meta / .src-body / .card-grid
-     に合わせる（ここが崩れると“ただのボタン”になる）
+   ✅ Preview（見た目だけ全表示）
+   - URL末尾 ?preview=1 のとき
+     ・ロックを解除して「全カードを所持風に表示」
+     ・ただし所持数（上部/各ソースの x/y）は現実のまま（countsを改変しない）
 */
 (() => {
   "use strict";
+
+  // ===== URL params =====
+  const params = new URLSearchParams(location.search);
+  const previewAll = params.get("preview") === "1";
 
   // ===== DOM =====
   const elSources = document.getElementById("sources");
@@ -198,6 +202,7 @@
     return parts.join(" ").toLowerCase();
   }
 
+  // ===== Counts (現実のまま) =====
   function getOwnedCountForSource(source) {
     let owned = 0;
     for (const c of source.cards) {
@@ -219,31 +224,46 @@
     return total;
   }
 
-  // ===== Card HTML (B仕様) =====
-  function renderCardHtml(c, n) {
-    const owned = Number(n ?? 0) > 0;
+  // ===== Preview-aware owned判定（表示だけ） =====
+  function isOwnedForDisplay(cardId) {
+    if (previewAll) return true; // ✅ 見た目だけ全解放
+    return Number(COUNTS[cardId] ?? 0) > 0;
+  }
+
+  function getRealCount(cardId) {
+    return Number(COUNTS[cardId] ?? 0);
+  }
+
+  // ===== Card HTML =====
+  function renderCardHtml(c) {
+    const realCount = getRealCount(c.id);
+
+    // ✅ 表示用の所持判定（preview=1ならtrue）
+    const ownedForDisplay = isOwnedForDisplay(c.id);
 
     const rarityNum = Number(c.rarity || 0);
     const rarityLabel = rarityNum ? `★${rarityNum}` : "";
     const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
 
-    const ownedCls = hasTruthy(owned) ? "owned" : "unowned";
-    const lockedCls = owned ? "" : "locked";
+    const ownedCls = ownedForDisplay ? "owned" : "unowned";
+    const lockedCls = ownedForDisplay ? "" : "locked";
 
-    // ✅ 未所持は名前を伏せる
-    const nameHtml = owned ? escapeHtml(c.name || "(no name)") : "？？？？？";
+    // ✅ 未所持（表示上）なら名前を伏せる（ただしpreviewなら解除）
+    const nameHtml = ownedForDisplay ? escapeHtml(c.name || "(no name)") : "？？？？？";
 
-    // ✅ 未所持は画像を出さない（ロック枠）
-    const img = owned
+    // ✅ 未所持（表示上）なら画像ロック（ただしpreviewなら解除）
+    const img = ownedForDisplay
       ? c.img
         ? `<img src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" loading="lazy">`
         : `<div class="noimg">NO IMAGE</div>`
       : `<div class="lockbox"><span class="lock">🔒</span></div>`;
 
-    const hasWiki = owned && !!c.wiki;
+    // ✅ 詳細リンクの扱い
+    // preview=1 のときは “見た目確認”用途として詳細も開けた方が実務的なので許可する
+    const hasWiki = !!c.wiki && (ownedForDisplay || previewAll);
 
-    // ✅ クリック導線：所持かつwikiがある時だけカード全体をリンク化
-    // ※ a 入れ子を避けるため、内側の「▶詳細を見る」は span.mini-link にする
+    // ✅ クリック導線：wikiがある時だけカード全体をリンク化
+    // ※ a 入れ子禁止：内側の「▶詳細を見る」は span.mini-link にする
     const wrapStart = hasWiki
       ? `<a class="card ${ownedCls} ${rarityCls} ${lockedCls}" href="${escapeHtml(
           c.wiki
@@ -260,16 +280,12 @@
           <div class="name">${nameHtml}</div>
           <div class="sub">
             <span class="rarity">${escapeHtml(rarityLabel)}</span>
-            <span class="count">所持:${owned ? Number(n ?? 0) : 0}</span>
+            <span class="count">所持:${realCount}</span>
             ${wikiChip}
           </div>
         </div>
       ${wrapEnd}
     `;
-  }
-
-  function hasTruthy(v) {
-    return !!v;
   }
 
   // ===== Render =====
@@ -280,7 +296,7 @@
     const srcFilter = String(elSrcFilter?.value ?? "all");
     const ownFilter = String(elOwnFilter?.value ?? "all");
 
-    // Status
+    // Status（所持数は現実のまま）
     if (elStatusRank) elStatusRank.textContent = "E"; // ✅ 暫定固定
     if (elStatusOwned) elStatusOwned.textContent = String(getTotalOwned());
     if (elStatusTotal) elStatusTotal.textContent = String(getTotalCards());
@@ -292,9 +308,11 @@
 
         // cards filter
         const list = s.cards.filter((c) => {
-          const n = Number(COUNTS[c.id] ?? 0);
-          if (ownFilter === "owned" && !(n > 0)) return false;
-          if (ownFilter === "unowned" && !(n <= 0)) return false;
+          const realCount = getRealCount(c.id);
+
+          // ✅ フィルタは「現実の所持数」に基づく（previewでもここは変えない）
+          if (ownFilter === "owned" && !(realCount > 0)) return false;
+          if (ownFilter === "unowned" && !(realCount <= 0)) return false;
 
           if (q) {
             const hay = buildSearchText(c, s);
@@ -303,29 +321,24 @@
           return true;
         });
 
-        const ownedCount = getOwnedCountForSource(s);
+        const ownedCountReal = getOwnedCountForSource(s); // ✅ 現実のまま
         const total = s.cards.length;
 
-        const items = list
-          .map((c) => {
-            const n = Number(COUNTS[c.id] ?? 0);
-            return renderCardHtml(c, n);
-          })
-          .join("");
+        const items = list.map((c) => renderCardHtml(c)).join("");
 
         const emptyText =
           q || ownFilter !== "all"
             ? `<div class="empty">条件に合うカードがありません。</div>`
             : `<div class="empty">このソースにはカードがありません。</div>`;
 
-        // ✅ ここが“装飾が効く開閉ヘッダ”の肝：CSSの想定クラスに合わせる
+        // ✅ 装飾が効く開閉ヘッダ（CSSの想定クラスに合わせる）
         return `
           <div class="src-block">
             <button class="src-toggle cyber" type="button" data-toggle="${escapeHtml(
               s.id
             )}">
               <span class="src-title">${escapeHtml(s.title)}</span>
-              <span class="src-meta">${ownedCount} / ${total}</span>
+              <span class="src-meta">${ownedCountReal} / ${total}</span>
             </button>
 
             <div class="src-body" style="display:${isOpen ? "block" : "none"}">
