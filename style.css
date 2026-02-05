@@ -274,6 +274,15 @@ body{
   box-shadow: 0 10px 30px rgba(0,0,0,.35);
   overflow: hidden;
   position: relative;
+
+  /* hover lift */
+  transition: transform .22s ease, box-shadow .22s ease;
+  will-change: transform;
+}
+
+.card:hover{
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(0,0,0,.45);
 }
 
 .card.owned{
@@ -312,6 +321,7 @@ body{
   padding: 10px 12px 12px;
 }
 
+/* 旧 .name/.sub は残しておく（互換） */
 .name{
   font-weight: 900;
   letter-spacing: .02em;
@@ -365,47 +375,41 @@ body{
   box-shadow: 0 10px 30px rgba(179,0,255,.06), 0 10px 30px rgba(0,0,0,.35);
 }
 .card.r5{
-  border-color: rgba(56,255,179,.34);
-  box-shadow: 0 10px 34px rgba(56,255,179,.08), 0 10px 30px rgba(0,0,0,.35);
+  border-color: rgba(56,255,179,.38);
+  /* ★5は “内側リング” を使わず、外側グロー脈動で差別化 */
+  animation: r5-pulse-outer 2.4s ease-in-out infinite;
 }
 
-/* ★5 発光（以前の “脈動パルス” に相当） */
+/* ★5：内側に線が乗る問題の原因になりやすいので、::before は使わない */
 .card.r5::before{
-  content:"";
-  position:absolute;
-  inset:-2px;
-  border-radius: 18px;
-  background: radial-gradient(closest-side, rgba(56,255,179,.18), transparent 70%);
-  opacity:.0;
-  pointer-events:none;
-  animation: r5-pulse 2.4s ease-in-out infinite;
+  content:none;
 }
 
-@keyframes r5-pulse{
+/* ★5 外側グロー脈動：画像に一切被らない */
+@keyframes r5-pulse-outer{
   0%{
     box-shadow:
-      0 0 0 2px rgba(56,255,179,.22) inset,
-      0 0 12px rgba(56,255,179,.20),
+      0 10px 34px rgba(56,255,179,.10),
       0 10px 30px rgba(0,0,0,.35);
   }
   50%{
     box-shadow:
-      0 0 0 2px rgba(56,255,179,.45) inset,
-      0 0 22px rgba(56,255,179,.55),
+      0 0 26px rgba(56,255,179,.55),
+      0 14px 40px rgba(56,255,179,.18),
       0 14px 36px rgba(0,0,0,.45);
   }
   100%{
     box-shadow:
-      0 0 0 2px rgba(56,255,179,.22) inset,
-      0 0 12px rgba(56,255,179,.20),
+      0 10px 34px rgba(56,255,179,.10),
       0 10px 30px rgba(0,0,0,.35);
   }
 }
 
-
 @media (prefers-reduced-motion: reduce){
   .src-toggle.cyber::after{ animation: none; }
-  .card.r5::before{ animation: none; }
+  .card{ transition: none; }
+  .card:hover{ transform: none; }
+  .card.r5{ animation: none; }
 }
 
 /* ===== Empty / Footer ===== */
@@ -517,13 +521,16 @@ body{
   justify-content: space-between;
   gap: 10px;
 }
+
 .card-name{
   font-weight: 900;
   letter-spacing: .02em;
   line-height: 1.25;
   flex: 1 1 auto;
   min-width: 0;
+  color: var(--text);          /* リンク青化防止 */
 }
+
 .card-star{
   flex: 0 0 auto;
   font-weight: 900;
@@ -536,6 +543,7 @@ body{
   font-size: 12px;
   line-height: 1;
 }
+
 .card-sub{
   margin-top: 8px;
   display:flex;
@@ -544,74 +552,13 @@ body{
   align-items: center;
 }
 
-.card {
+/* anchor card 表示統一 */
+.card{
   color: inherit;
   text-decoration: none;
 }
 
-.card:hover .card-name {
+.card:hover .card-name{
   text-decoration: underline;
   text-decoration-color: rgba(180,200,255,.5);
-}
-
-/* =========================
-   ADD (safe v3): r5 visible + clear rarity separation
-   ========================= */
-
-/* hover lift（そのまま） */
-.card{
-  transition:
-    transform .22s ease,
-    box-shadow .22s ease;
-}
-.card:hover{
-  transform: translateY(-4px);
-  box-shadow: 0 18px 40px rgba(0,0,0,.45);
-}
-
-/* ★5：確実に見える「内側発光」 */
-.card.r5::before{
-  content:"";
-  position:absolute;
-  inset:0;                    /* ← 内側 */
-  border-radius: 16px;
-  background:
-    radial-gradient(
-      circle at 50% 40%,
-      rgba(56,255,179,.35),
-      rgba(56,255,179,.15) 45%,
-      transparent 72%
-    );
-  opacity:.9;
-  pointer-events:none;
-  z-index:0;
-  animation: r5-pulse 2.4s ease-in-out infinite;
-}
-
-/* 中身は必ず前面 */
-.card > *{
-  position: relative;
-  z-index:1;
-}
-
-/* ★5：決定打として「内側リング」を追加 */
-.card.r5{
-  box-shadow:
-    0 0 0 2px rgba(56,255,179,.28) inset,
-    0 10px 34px rgba(56,255,179,.14),
-    0 10px 30px rgba(0,0,0,.35);
-}
-
-/* ★3：★5と混同しない程度に抑制 */
-.card.r3{
-  box-shadow:
-    0 10px 26px rgba(0,229,255,.10),
-    0 10px 30px rgba(0,0,0,.35);
-}
-
-/* 動き軽減 */
-@media (prefers-reduced-motion: reduce){
-  .card{ transition:none; }
-  .card:hover{ transform:none; }
-  .card.r5::before{ animation:none; }
 }
