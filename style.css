@@ -378,14 +378,30 @@ body{
   background: radial-gradient(closest-side, rgba(56,255,179,.18), transparent 70%);
   opacity:.0;
   pointer-events:none;
-  animation: r5-pulse 1.6s ease-in-out infinite;
+  animation: r5-pulse 2.4s ease-in-out infinite;
 }
 
 @keyframes r5-pulse{
-  0%{ opacity: .08; transform: scale(.98); }
-  50%{ opacity: .26; transform: scale(1.01); }
-  100%{ opacity: .08; transform: scale(.98); }
+  0%{
+    box-shadow:
+      0 0 0 2px rgba(56,255,179,.22) inset,
+      0 0 12px rgba(56,255,179,.20),
+      0 10px 30px rgba(0,0,0,.35);
+  }
+  50%{
+    box-shadow:
+      0 0 0 2px rgba(56,255,179,.45) inset,
+      0 0 22px rgba(56,255,179,.55),
+      0 14px 36px rgba(0,0,0,.45);
+  }
+  100%{
+    box-shadow:
+      0 0 0 2px rgba(56,255,179,.22) inset,
+      0 0 12px rgba(56,255,179,.20),
+      0 10px 30px rgba(0,0,0,.35);
+  }
 }
+
 
 @media (prefers-reduced-motion: reduce){
   .src-toggle.cyber::after{ animation: none; }
@@ -569,7 +585,7 @@ body{
   opacity:.9;
   pointer-events:none;
   z-index:0;
-  animation: r5-pulse 2.2s ease-in-out infinite;
+  animation: r5-pulse 2.4s ease-in-out infinite;
 }
 
 /* 中身は必ず前面 */
