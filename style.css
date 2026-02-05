@@ -494,29 +494,36 @@ body{
   opacity: .85;
 }
 
-.card-head {
-  display: flex;
-  justify-content: space-between;
+/* ===== Card head (案②) ===== */
+.card-head{
+  display:flex;
   align-items: center;
-  font-weight: 600;
+  justify-content: space-between;
+  gap: 10px;
 }
-
-.badge {
-  padding: 2px 6px;
-  border-radius: 6px;
+.card-name{
+  font-weight: 900;
+  letter-spacing: .02em;
+  line-height: 1.25;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.card-star{
+  flex: 0 0 auto;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(120,190,255,.20);
+  background: rgba(0,0,0,.20);
+  color: var(--muted);
   font-size: 12px;
+  line-height: 1;
 }
-
-.badge.rarity {
-  background: rgba(120,120,255,.25);
-}
-
-.badge.owned {
-  background: rgba(80,180,120,.25);
-}
-
-.card-sub {
-  margin-top: 4px;
-  display: flex;
+.card-sub{
+  margin-top: 8px;
+  display:flex;
+  flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
 }
