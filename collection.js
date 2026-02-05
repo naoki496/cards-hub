@@ -5,14 +5,19 @@
    - 検索 / 所持フィルタ / ソースフィルタ
    - 全展開 / 全折り畳み / 再読込
 
-   ✅ B仕様（未所持ロック）
-   - 所持(n>0): 画像/名前/▶詳細を見る を表示
-   - 未所持(n==0): 画像はロック枠、名前は「？？？？？」、詳細リンク無し
+   ✅ 未所持ロック（通常）
+   - 所持(n>0): 画像/名前/詳細 を表示
+   - 未所持(n==0): 画像ロック/名前伏せ/詳細なし
 
    ✅ Preview（見た目だけ全表示）
    - URL末尾 ?preview=1 のとき
-     ・ロックを解除して「全カードを所持風に表示」
-     ・ただし所持数（上部/各ソースの x/y）は現実のまま（countsを改変しない）
+     ・ロック解除して全カードを所持風に表示
+     ・ただし所持数（上部/各ソースの x/y/カード内所持表示）は現実のまま
+
+   ✅ UI（案②）
+   - カード内を「ヘッダ（名前＋★）」と「下段（所持数＋詳細）」に分離
+   - ★5発光は style.css の .card.r5::before を活かすため、
+     カード要素に必ず class="card r5" を付ける
 */
 (() => {
   "use strict";
@@ -27,10 +32,7 @@
   const elSrcFilter = document.getElementById("srcFilter");
   const elOwnFilter = document.getElementById("ownFilter");
 
-  // ✅ ランク（暫定固定表示）
   const elStatusRank = document.getElementById("statusRank");
-
-  // 既存
   const elStatusOwned = document.getElementById("statusOwned");
   const elStatusTotal = document.getElementById("statusTotal");
   const elErrorBox = document.getElementById("errorBox");
@@ -234,36 +236,34 @@
     return Number(COUNTS[cardId] ?? 0);
   }
 
-  // ===== Card HTML =====
+  // ===== Card HTML（案②：ヘッダ分離） =====
   function renderCardHtml(c) {
     const realCount = getRealCount(c.id);
-
-    // ✅ 表示用の所持判定（preview=1ならtrue）
     const ownedForDisplay = isOwnedForDisplay(c.id);
 
     const rarityNum = Number(c.rarity || 0);
-    const rarityLabel = rarityNum ? `★${rarityNum}` : "";
-    const rarityCls = rarityNum ? `r${rarityNum}` : "r0";
+    const rarityCls = `r${rarityNum || 0}`;
 
+    // ★5発光は style.css の .card.r5::before が担当
+    // → ここで必ず class="card r5" を付ける
     const ownedCls = ownedForDisplay ? "owned" : "unowned";
     const lockedCls = ownedForDisplay ? "" : "locked";
 
-    // ✅ 未所持（表示上）なら名前を伏せる（ただしpreviewなら解除）
-    const nameHtml = ownedForDisplay ? escapeHtml(c.name || "(no name)") : "？？？？？";
+    // 名前・画像（表示用）
+    const nameText = ownedForDisplay ? (c.name || "(no name)") : "？？？？？";
+    const nameHtml = escapeHtml(nameText);
 
-    // ✅ 未所持（表示上）なら画像ロック（ただしpreviewなら解除）
     const img = ownedForDisplay
       ? c.img
         ? `<img src="${escapeHtml(c.img)}" alt="${escapeHtml(c.name)}" loading="lazy">`
         : `<div class="noimg">NO IMAGE</div>`
       : `<div class="lockbox"><span class="lock">🔒</span></div>`;
 
-    // ✅ 詳細リンクの扱い
-    // preview=1 のときは “見た目確認”用途として詳細も開けた方が実務的なので許可する
+    // 詳細：通常は「所持しているときだけ」。
+    // preview=1 の場合は “見た目確認”用途として開ける方が実務的なので許可。
     const hasWiki = !!c.wiki && (ownedForDisplay || previewAll);
 
-    // ✅ クリック導線：wikiがある時だけカード全体をリンク化
-    // ※ a 入れ子禁止：内側の「▶詳細を見る」は span.mini-link にする
+    // 外側リンク（a入れ子禁止）
     const wrapStart = hasWiki
       ? `<a class="card ${ownedCls} ${rarityCls} ${lockedCls}" href="${escapeHtml(
           c.wiki
@@ -271,16 +271,24 @@
       : `<div class="card ${ownedCls} ${rarityCls} ${lockedCls}">`;
     const wrapEnd = hasWiki ? `</a>` : `</div>`;
 
-    const wikiChip = hasWiki ? `<span class="mini-link">▶詳細を見る</span>` : "";
+    // 既存CSSは .mini-link を装飾対象（style.css）
+    const wikiChip = hasWiki ? `<span class="mini-link">▶ 詳細</span>` : "";
+
+    // ★表示（案②：ヘッダ右側）
+    const starLabel = rarityNum ? `★${rarityNum}` : `★0`;
 
     return `
       ${wrapStart}
         <div class="thumb">${img}</div>
+
         <div class="meta">
-          <div class="name">${nameHtml}</div>
-          <div class="sub">
-            <span class="rarity">${escapeHtml(rarityLabel)}</span>
-            <span class="count">所持:${realCount}</span>
+          <div class="card-head">
+            <div class="card-name">${nameHtml}</div>
+            <div class="card-star">${escapeHtml(starLabel)}</div>
+          </div>
+
+          <div class="card-sub">
+            <span class="tag">所持:${realCount}</span>
             ${wikiChip}
           </div>
         </div>
@@ -297,7 +305,7 @@
     const ownFilter = String(elOwnFilter?.value ?? "all");
 
     // Status（所持数は現実のまま）
-    if (elStatusRank) elStatusRank.textContent = "E"; // ✅ 暫定固定
+    if (elStatusRank) elStatusRank.textContent = "E"; // 暫定固定
     if (elStatusOwned) elStatusOwned.textContent = String(getTotalOwned());
     if (elStatusTotal) elStatusTotal.textContent = String(getTotalCards());
 
@@ -306,11 +314,10 @@
       .map((s) => {
         const isOpen = expanded.has(s.id);
 
-        // cards filter
+        // cards filter（フィルタは現実の所持数で判断：previewでも変えない）
         const list = s.cards.filter((c) => {
           const realCount = getRealCount(c.id);
 
-          // ✅ フィルタは「現実の所持数」に基づく（previewでもここは変えない）
           if (ownFilter === "owned" && !(realCount > 0)) return false;
           if (ownFilter === "unowned" && !(realCount <= 0)) return false;
 
@@ -321,7 +328,7 @@
           return true;
         });
 
-        const ownedCountReal = getOwnedCountForSource(s); // ✅ 現実のまま
+        const ownedCountReal = getOwnedCountForSource(s);
         const total = s.cards.length;
 
         const items = list.map((c) => renderCardHtml(c)).join("");
@@ -331,7 +338,6 @@
             ? `<div class="empty">条件に合うカードがありません。</div>`
             : `<div class="empty">このソースにはカードがありません。</div>`;
 
-        // ✅ 装飾が効く開閉ヘッダ（CSSの想定クラスに合わせる）
         return `
           <div class="src-block">
             <button class="src-toggle cyber" type="button" data-toggle="${escapeHtml(
@@ -381,7 +387,6 @@
     ];
     elSrcFilter.innerHTML = opts.join("");
 
-    // なるべく値を維持
     const exists = Array.from(elSrcFilter.options).some((o) => o.value === cur);
     elSrcFilter.value = exists ? cur : "all";
   }
@@ -411,10 +416,8 @@
     cfg.storageKey = String(manifest?.storageKey ?? "hklobby.v1.cardCounts");
     cfg.sources = Array.isArray(manifest?.sources) ? manifest.sources : [];
 
-    // counts
     COUNTS = loadCounts(cfg.storageKey);
 
-    // sources load
     const out = [];
     for (const s of cfg.sources) {
       const sid = String(s?.id ?? "").trim();
@@ -427,7 +430,6 @@
         raw = await csvLoad(cardsCsv);
       } catch (e) {
         console.warn("[cards] load failed:", sid, cardsCsv, e);
-        // 1ソース落ちても全体は生かす
         raw = [];
       }
 
@@ -437,15 +439,16 @@
           const c = normalizeCardRow(r);
           if (!c.id) continue;
           cards.push(c);
-        } catch (_) {}
+        } catch {
+          // ignore row
+        }
       }
+
       out.push({ id: sid, title, cardsCsv, cards });
     }
 
     sourcesData = out;
-
-    // 初期：閉じる（必要なら expandAll() に変えてOK）
-    expanded = new Set();
+    expanded = new Set(); // 初期：閉じる
 
     rebuildSourceFilter();
     render();
