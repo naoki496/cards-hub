@@ -563,19 +563,36 @@ body{
   text-decoration-color: rgba(180,200,255,.5);
 }
 
-/* === ▶OPEN：控えめな発光で視認性アップ ===================== */
+/* === ▶OPEN：色付き・緩やかグロー ===================== */
 .src-meta::after{
   content: "  ▶OPEN";
   font-size: 12px;
   letter-spacing: .16em;
-  opacity: .9;
+  font-weight: 600;
+
+  color: #f3c77a; /* アンバーゴールド */
+
   user-select: none;
   pointer-events: none;
 
-  /* 発光（色は既存UIに合わせて白系） */
-  text-shadow:
-    0 0 4px rgba(255,255,255,.45),
-    0 0 8px rgba(255,255,255,.25);
+  animation: openGlow 6s ease-in-out infinite;
 }
+
+/* 呼吸するようなグロー */
+@keyframes openGlow{
+  0%,100%{
+    text-shadow:
+      0 0 4px rgba(243,199,122,.35),
+      0 0 8px rgba(243,199,122,.2);
+    opacity: .75;
+  }
+  50%{
+    text-shadow:
+      0 0 8px rgba(243,199,122,.7),
+      0 0 16px rgba(243,199,122,.45);
+    opacity: .95;
+  }
+}
+
 
 
