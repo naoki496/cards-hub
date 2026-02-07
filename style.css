@@ -563,13 +563,19 @@ body{
   text-decoration-color: rgba(180,200,255,.5);
 }
 
-/* === ソース見出し（横長バー）：押せる誘導 ===================== */
+/* === ▶OPEN：控えめな発光で視認性アップ ===================== */
 .src-meta::after{
   content: "  ▶OPEN";
   font-size: 12px;
   letter-spacing: .14em;
-  opacity: .7;
+  opacity: .9;
   user-select: none;
   pointer-events: none;
+
+  /* 発光（色は既存UIに合わせて白系） */
+  text-shadow:
+    0 0 4px rgba(255,255,255,.45),
+    0 0 8px rgba(255,255,255,.25);
 }
+
 
