@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>HK STATUS</title>
+  <style>
+    :root{
+      --bg: rgba(10,12,20,.55);
+      --bd: rgba(255,255,255,.10);
+      --tx: rgba(240,245,255,.92);
+      --mut: rgba(240,245,255,.65);
+      --gl: rgba(120,220,255,.28);
+      --ok: rgba(140,255,190,.20);
+      --up: rgba(255,220,120,.22);
+    }
+    html,body{height:100%; margin:0; background:transparent; color:var(--tx); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;}
+    .bar{
+      box-sizing:border-box;
+      width:100%;
+      border:1px solid var(--bd);
+      background:linear-gradient(180deg, rgba(10,12,20,.62), rgba(10,12,20,.42));
+      border-radius:16px;
+      padding:10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.03) inset, 0 18px 50px rgba(0,0,0,.35);
+      position:relative;
+      overflow:hidden;
+    }
+    .bar::before{
+      content:"";
+      position:absolute; inset:-2px;
+      background: radial-gradient(600px 160px at 20% 20%, rgba(120,220,255,.18), transparent 60%),
+                  radial-gradient(520px 140px at 90% 80%, rgba(255,140,220,.10), transparent 60%);
+      pointer-events:none;
+    }
+    .left{display:flex; align-items:baseline; gap:10px; min-width:0; z-index:1;}
+    .ttl{font-weight:900; letter-spacing:.14em; font-size:12px; opacity:.85;}
+    .kpis{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap;}
+    .kpi{
+      display:flex; gap:6px; align-items:baseline;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(14,18,34,.35);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      white-space:nowrap;
+    }
+    .lab{font-size:10px; letter-spacing:.14em; opacity:.7;}
+    .val{font-size:14px; font-weight:900; letter-spacing:.02em;}
+    .val.rank{min-width:1.8em; text-align:center;}
+    .hint{font-size:10px; color:var(--mut); z-index:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    .badge{
+      position:absolute; right:10px; top:10px;
+      font-size:10px; font-weight:900; letter-spacing:.10em;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,220,120,.10);
+      box-shadow: 0 0 24px rgba(255,220,120,.12);
+      opacity:0; transform:translateY(-4px);
+      transition: opacity .25s ease, transform .25s ease;
+      z-index:2;
+    }
+    .badge.show{opacity:1; transform:translateY(0);}
+    .rank-E{box-shadow:0 0 26px rgba(180,200,255,.10);}
+    .rank-D{box-shadow:0 0 26px rgba(160,220,255,.12);}
+    .rank-C{box-shadow:0 0 26px rgba(120,255,220,.12);}
+    .rank-B{box-shadow:0 0 28px rgba(120,255,190,.16);}
+    .rank-A{box-shadow:0 0 32px rgba(255,200,120,.14);}
+    .rank-S{box-shadow:0 0 36px rgba(255,140,220,.18), 0 0 62px rgba(120,220,255,.12);}
+  </style>
+</head>
+<body>
+  <div id="bar" class="bar">
+    <div class="left">
+      <div class="ttl">STATUS</div>
+      <div class="kpis">
+        <div class="kpi"><div class="lab">RANK</div><div id="rank" class="val rank">--</div></div>
+        <div class="kpi"><div class="lab">CARDS</div><div id="cards" class="val">--/--</div></div>
+      </div>
+    </div>
+    <div id="hint" class="hint">読み込み中…</div>
+    <div id="badge" class="badge">UPDATED</div>
+  </div>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const MANIFEST_URL = "./cards-manifest.json"; // cards-hub直下
+    const SESSION_KEY_LAST_TOTAL = "hk.status.lastTotalTypes";
+
+    // E: <20% / D: <40% / C: <60% / B: <80% / A: <100% / S: 100%
+    function calcRankByRatio(p){
+      if (p >= 1) return "S";
+      if (p >= 0.80) return "A";
+      if (p >= 0.60) return "B";
+      if (p >= 0.40) return "C";
+      if (p >= 0.20) return "D";
+      return "E";
+    }
+
+    function safeJsonParse(s){
+      try{ const o = JSON.parse(s); return (o && typeof o === "object") ? o : null; }catch{ return null; }
+    }
+
+    function readCounts(storageKey){
+      try{
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return {};
+        return safeJsonParse(raw) || {};
+      }catch{ return {}; }
+    }
+
+    async function fetchJson(url){
+      const r = await fetch(url, { cache:"no-store" });
+      if (!r.ok) throw new Error(`fetch failed: ${r.status} ${url}`);
+      return r.json();
+    }
+
+    // 超軽量CSV（ヘッダ＋カンマ＋ダブルクォート）
+    function splitCsvLine(line){
+      const s = String(line ?? "");
+      const out = [];
+      let cur = "", inQ = false;
+      for (let i=0;i<s.length;i++){
+        const ch = s[i];
+        if (inQ){
+          if (ch === '"'){
+            if (s[i+1] === '"'){ cur += '"'; i++; }
+            else inQ = false;
+          } else cur += ch;
+        } else {
+          if (ch === ","){ out.push(cur); cur=""; }
+          else if (ch === '"'){ inQ = true; }
+          else cur += ch;
+        }
+      }
+      out.push(cur);
+      return out;
+    }
+
+    async function fetchCsvIds(csvUrl){
+      const r = await fetch(csvUrl, { cache:"no-store" });
+      if (!r.ok) throw new Error(`csv fetch failed: ${r.status} ${csvUrl}`);
+      const text = await r.text();
+      const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n").filter(l=>l.trim().length);
+      if (!lines.length) return [];
+      const header = splitCsvLine(lines[0]).map(h=>String(h||"").trim());
+      const idxId = header.indexOf("id");
+      if (idxId < 0) return [];
+      const ids = [];
+      for (let i=1;i<lines.length;i++){
+        const cols = splitCsvLine(lines[i]);
+        const id = String(cols[idxId] ?? "").trim();
+        if (id) ids.push(id);
+      }
+      return ids;
+    }
+
+    function showUpdatedIfNeeded(totalTypes){
+      try{
+        const prev = sessionStorage.getItem(SESSION_KEY_LAST_TOTAL);
+        sessionStorage.setItem(SESSION_KEY_LAST_TOTAL, String(totalTypes));
+        if (prev !== null && Number(prev) !== Number(totalTypes)){
+          const badge = document.getElementById("badge");
+          if (!badge) return;
+          badge.classList.add("show");
+          setTimeout(()=>badge.classList.remove("show"), 6500);
+        }
+      }catch{}
+    }
+
+    async function boot(){
+      const rankEl = document.getElementById("rank");
+      const cardsEl = document.getElementById("cards");
+      const hintEl = document.getElementById("hint");
+      const barEl  = document.getElementById("bar");
+
+      try{
+        const mf = await fetchJson(MANIFEST_URL);
+        const storageKey = String(mf?.storageKey ?? "hklobby.v1.cardCounts");
+        const sources = Array.isArray(mf?.sources) ? mf.sources : [];
+
+        // 全ID集合（総数）
+        const idSet = new Set();
+        for (const s of sources){
+          const csvUrl = String(s?.cardsCsv ?? "").trim();
+          if (!csvUrl) continue;
+          // 絶対URL想定（あなたの現行スキーマ）
+          const ids = await fetchCsvIds(csvUrl);
+          ids.forEach(id => idSet.add(id));
+        }
+        const totalTypes = idSet.size;
+
+        // 所持（ユニーク）
+        const counts = readCounts(storageKey);
+        let ownedTypes = 0;
+        for (const id of idSet){
+          const n = Number(counts[id] ?? 0);
+          if (Number.isFinite(n) && n > 0) ownedTypes++;
+        }
+
+        const p = totalTypes ? (ownedTypes / totalTypes) : 0;
+        const rank = calcRankByRatio(p);
+
+        if (rankEl) rankEl.textContent = rank;
+        if (cardsEl) cardsEl.textContent = `${ownedTypes}/${totalTypes}`;
+        if (hintEl) hintEl.textContent = "同一端末の所持データを表示中（自動更新）";
+
+        if (barEl){
+          barEl.classList.add("rank-" + rank);
+        }
+
+        showUpdatedIfNeeded(totalTypes);
+      }catch(e){
+        if (rankEl) rankEl.textContent = "--";
+        if (cardsEl) cardsEl.textContent = "--/--";
+        if (hintEl) hintEl.textContent = "STATUS を取得できません（初回 or 設定未配置）";
+        console.warn("[status.html] failed:", e);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => boot());
+  })();
+  </script>
+</body>
+</html>
