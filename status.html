@@ -7,226 +7,307 @@
   <title>HK STATUS</title>
   <style>
     :root{
-      --bg: rgba(10,12,20,.55);
-      --bd: rgba(255,255,255,.10);
-      --tx: rgba(240,245,255,.92);
-      --mut: rgba(240,245,255,.65);
-      --gl: rgba(120,220,255,.28);
-      --ok: rgba(140,255,190,.20);
-      --up: rgba(255,220,120,.22);
+      --bgA: rgba(255,255,255,.08);
+      --bgB: rgba(0,0,0,.28);
+      --line: rgba(255,255,255,.14);
+
+      --white: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.62);
+
+      /* cyber accents */
+      --c1: rgba(140,220,255,.95); /* cyan */
+      --c2: rgba(203,255,92,.95);  /* lime */
+      --cGlow: rgba(140,220,255,.28);
+      --cGlow2: rgba(203,255,92,.20);
     }
-    html,body{height:100%; margin:0; background:transparent; color:var(--tx); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;}
-    .bar{
-      box-sizing:border-box;
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background: transparent;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--white);
+    }
+
+    /* Container sized for iframe height ~86px */
+    .wrap{
+      height: 86px;
+      padding: 10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .panel{
       width:100%;
-      border:1px solid var(--bd);
-      background:linear-gradient(180deg, rgba(10,12,20,.62), rgba(10,12,20,.42));
-      border-radius:16px;
-      padding:10px 12px;
+      height:100%;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(420px 120px at 20% 20%, rgba(140,220,255,.18), transparent 60%),
+        radial-gradient(460px 140px at 80% 70%, rgba(203,255,92,.12), transparent 65%),
+        linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.22));
+      overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:10px;
-      box-shadow: 0 0 0 1px rgba(255,255,255,.03) inset, 0 18px 50px rgba(0,0,0,.35);
-      position:relative;
-      overflow:hidden;
+      gap: 10px;
+      padding: 10px 12px;
     }
-    .bar::before{
-      content:"";
-      position:absolute; inset:-2px;
-      background: radial-gradient(600px 160px at 20% 20%, rgba(120,220,255,.18), transparent 60%),
-                  radial-gradient(520px 140px at 90% 80%, rgba(255,140,220,.10), transparent 60%);
-      pointer-events:none;
+
+    .left{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width: 0;
     }
-    .left{display:flex; align-items:baseline; gap:10px; min-width:0; z-index:1;}
-    .ttl{font-weight:900; letter-spacing:.14em; font-size:12px; opacity:.85;}
-    .kpis{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap;}
-    .kpi{
-      display:flex; gap:6px; align-items:baseline;
-      padding:6px 10px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(14,18,34,.35);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+
+    .label{
+      font-weight: 900;
+      letter-spacing: .14em;
+      font-size: 12px;
+      opacity:.92;
       white-space:nowrap;
     }
-    .lab{font-size:10px; letter-spacing:.14em; opacity:.7;}
-    .val{font-size:14px; font-weight:900; letter-spacing:.02em;}
-    .val.rank{min-width:1.8em; text-align:center;}
-    .hint{font-size:10px; color:var(--mut); z-index:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-    .badge{
-      position:absolute; right:10px; top:10px;
-      font-size:10px; font-weight:900; letter-spacing:.10em;
-      padding:6px 10px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(255,220,120,.10);
-      box-shadow: 0 0 24px rgba(255,220,120,.12);
-      opacity:0; transform:translateY(-4px);
-      transition: opacity .25s ease, transform .25s ease;
-      z-index:2;
+
+    .pills{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex-wrap:nowrap;
+      min-width: 0;
     }
-    .badge.show{opacity:1; transform:translateY(0);}
-    .rank-E{box-shadow:0 0 26px rgba(180,200,255,.10);}
-    .rank-D{box-shadow:0 0 26px rgba(160,220,255,.12);}
-    .rank-C{box-shadow:0 0 26px rgba(120,255,220,.12);}
-    .rank-B{box-shadow:0 0 28px rgba(120,255,190,.16);}
-    .rank-A{box-shadow:0 0 32px rgba(255,200,120,.14);}
-    .rank-S{box-shadow:0 0 36px rgba(255,140,220,.18), 0 0 62px rgba(120,220,255,.12);}
+
+    .pill{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.22);
+      white-space: nowrap;
+    }
+
+    .pill .k{
+      font-size: 11px;
+      letter-spacing: .12em;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .pill .v{
+      font-size: 16px;
+      font-weight: 1000;
+      letter-spacing: .06em;
+      color: var(--white);
+    }
+
+    .rankV{
+      color: var(--c1);
+      text-shadow: 0 0 14px var(--cGlow);
+    }
+
+    .cardsV{
+      color: var(--white);
+    }
+    .cardsV b{
+      color: var(--c2);
+      text-shadow: 0 0 14px var(--cGlow2);
+    }
+
+    .right{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .hint{
+      font-size: 11px;
+      color: var(--muted);
+      white-space:nowrap;
+    }
+
+    /* keep compact on narrow screens */
+    @media (max-width: 360px){
+      .pill{ padding: 7px 10px; }
+      .pill .v{ font-size: 15px; }
+      .label{ display:none; }
+    }
   </style>
 </head>
+
 <body>
-  <div id="bar" class="bar">
-    <div class="left">
-      <div class="ttl">STATUS</div>
-      <div class="kpis">
-        <div class="kpi"><div class="lab">RANK</div><div id="rank" class="val rank">--</div></div>
-        <div class="kpi"><div class="lab">CARDS</div><div id="cards" class="val">--/--</div></div>
+  <div class="wrap">
+    <div class="panel" role="region" aria-label="学習ステータス">
+      <div class="left">
+        <div class="label">STATUS</div>
+
+        <div class="pills" aria-label="ステータス値">
+          <div class="pill" aria-label="ランク">
+            <span class="k">RANK</span>
+            <span id="rank" class="v rankV">--</span>
+          </div>
+
+          <div class="pill" aria-label="カード取得数">
+            <span class="k">CARDS</span>
+            <span id="cards" class="v cardsV"><b>--</b>/<span id="total">--</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="hint">（自動更新）</div>
       </div>
     </div>
-    <div id="hint" class="hint">読み込み中…</div>
-    <div id="badge" class="badge">UPDATED</div>
   </div>
 
   <script>
-  (() => {
-    "use strict";
+    (() => {
+      "use strict";
 
-    const MANIFEST_URL = "./cards-manifest.json"; // cards-hub直下
-    const SESSION_KEY_LAST_TOTAL = "hk.status.lastTotalTypes";
+      const elRank  = document.getElementById("rank");
+      const elCards = document.getElementById("cards");
+      const elTotal = document.getElementById("total");
 
-    // E: <20% / D: <40% / C: <60% / B: <80% / A: <100% / S: 100%
-    function calcRankByRatio(p){
-      if (p >= 1) return "S";
-      if (p >= 0.80) return "A";
-      if (p >= 0.60) return "B";
-      if (p >= 0.40) return "C";
-      if (p >= 0.20) return "D";
-      return "E";
-    }
+      const MANIFEST_URL = "./cards-manifest.json";
 
-    function safeJsonParse(s){
-      try{ const o = JSON.parse(s); return (o && typeof o === "object") ? o : null; }catch{ return null; }
-    }
-
-    function readCounts(storageKey){
-      try{
-        const raw = localStorage.getItem(storageKey);
-        if (!raw) return {};
-        return safeJsonParse(raw) || {};
-      }catch{ return {}; }
-    }
-
-    async function fetchJson(url){
-      const r = await fetch(url, { cache:"no-store" });
-      if (!r.ok) throw new Error(`fetch failed: ${r.status} ${url}`);
-      return r.json();
-    }
-
-    // 超軽量CSV（ヘッダ＋カンマ＋ダブルクォート）
-    function splitCsvLine(line){
-      const s = String(line ?? "");
-      const out = [];
-      let cur = "", inQ = false;
-      for (let i=0;i<s.length;i++){
-        const ch = s[i];
-        if (inQ){
-          if (ch === '"'){
-            if (s[i+1] === '"'){ cur += '"'; i++; }
-            else inQ = false;
-          } else cur += ch;
-        } else {
-          if (ch === ","){ out.push(cur); cur=""; }
-          else if (ch === '"'){ inQ = true; }
-          else cur += ch;
-        }
+      function safeJsonParse(raw){
+        try{ return JSON.parse(raw); }catch{ return null; }
       }
-      out.push(cur);
-      return out;
-    }
 
-    async function fetchCsvIds(csvUrl){
-      const r = await fetch(csvUrl, { cache:"no-store" });
-      if (!r.ok) throw new Error(`csv fetch failed: ${r.status} ${csvUrl}`);
-      const text = await r.text();
-      const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n").filter(l=>l.trim().length);
-      if (!lines.length) return [];
-      const header = splitCsvLine(lines[0]).map(h=>String(h||"").trim());
-      const idxId = header.indexOf("id");
-      if (idxId < 0) return [];
-      const ids = [];
-      for (let i=1;i<lines.length;i++){
-        const cols = splitCsvLine(lines[i]);
-        const id = String(cols[idxId] ?? "").trim();
-        if (id) ids.push(id);
-      }
-      return ids;
-    }
-
-    function showUpdatedIfNeeded(totalTypes){
-      try{
-        const prev = sessionStorage.getItem(SESSION_KEY_LAST_TOTAL);
-        sessionStorage.setItem(SESSION_KEY_LAST_TOTAL, String(totalTypes));
-        if (prev !== null && Number(prev) !== Number(totalTypes)){
-          const badge = document.getElementById("badge");
-          if (!badge) return;
-          badge.classList.add("show");
-          setTimeout(()=>badge.classList.remove("show"), 6500);
-        }
-      }catch{}
-    }
-
-    async function boot(){
-      const rankEl = document.getElementById("rank");
-      const cardsEl = document.getElementById("cards");
-      const hintEl = document.getElementById("hint");
-      const barEl  = document.getElementById("bar");
-
-      try{
-        const mf = await fetchJson(MANIFEST_URL);
-        const storageKey = String(mf?.storageKey ?? "hklobby.v1.cardCounts");
-        const sources = Array.isArray(mf?.sources) ? mf.sources : [];
-
-        // 全ID集合（総数）
-        const idSet = new Set();
-        for (const s of sources){
-          const csvUrl = String(s?.cardsCsv ?? "").trim();
-          if (!csvUrl) continue;
-          // 絶対URL想定（あなたの現行スキーマ）
-          const ids = await fetchCsvIds(csvUrl);
-          ids.forEach(id => idSet.add(id));
-        }
-        const totalTypes = idSet.size;
-
-        // 所持（ユニーク）
-        const counts = readCounts(storageKey);
+      function summarizeCounts(obj){
         let ownedTypes = 0;
-        for (const id of idSet){
-          const n = Number(counts[id] ?? 0);
-          if (Number.isFinite(n) && n > 0) ownedTypes++;
+        if(!obj || typeof obj !== "object") return 0;
+        for(const [k,v] of Object.entries(obj)){
+          const n = Number(v);
+          if(!k) continue;
+          if(Number.isFinite(n) && n > 0) ownedTypes++;
         }
-
-        const p = totalTypes ? (ownedTypes / totalTypes) : 0;
-        const rank = calcRankByRatio(p);
-
-        if (rankEl) rankEl.textContent = rank;
-        if (cardsEl) cardsEl.textContent = `${ownedTypes}/${totalTypes}`;
-        if (hintEl) hintEl.textContent = "同一端末の所持データを表示中（自動更新）";
-
-        if (barEl){
-          barEl.classList.add("rank-" + rank);
-        }
-
-        showUpdatedIfNeeded(totalTypes);
-      }catch(e){
-        if (rankEl) rankEl.textContent = "--";
-        if (cardsEl) cardsEl.textContent = "--/--";
-        if (hintEl) hintEl.textContent = "STATUS を取得できません（初回 or 設定未配置）";
-        console.warn("[status.html] failed:", e);
+        return ownedTypes;
       }
-    }
 
-    document.addEventListener("DOMContentLoaded", () => boot());
-  })();
+      function rankByRatio(owned, total){
+        if(total <= 0) return "E";
+        if(owned >= total) return "S"; // 100%のみ
+
+        const r = owned / total; // 0..1
+        if(r <= 0.19) return "E";
+        if(r <= 0.39) return "D";
+        if(r <= 0.59) return "C";
+        if(r <= 0.79) return "B";
+        if(r <= 0.99) return "A";
+        return "A";
+      }
+
+      // --- CSV minimal loader (header row required) ---
+      function splitCsvLine(line){
+        const s = String(line ?? "");
+        const out = [];
+        let cur = "";
+        let inQ = false;
+        for(let i=0;i<s.length;i++){
+          const ch = s[i];
+          if(inQ){
+            if(ch === '"'){
+              if(s[i+1] === '"'){ cur += '"'; i++; }
+              else inQ = false;
+            }else cur += ch;
+          }else{
+            if(ch === ","){ out.push(cur); cur = ""; }
+            else if(ch === '"'){ inQ = true; }
+            else cur += ch;
+          }
+        }
+        out.push(cur);
+        return out;
+      }
+
+      async function fetchCsvRows(url){
+        const res = await fetch(url, { cache:"no-store" });
+        if(!res.ok) throw new Error("CSV HTTP " + res.status);
+        const text = await res.text();
+
+        const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n")
+          .split("\n").filter(l => l.trim().length);
+
+        if(!lines.length) return [];
+
+        const header = splitCsvLine(lines[0]).map(h => String(h||"").trim());
+        const rows = [];
+        for(let i=1;i<lines.length;i++){
+          const cols = splitCsvLine(lines[i]);
+          const obj = {};
+          for(let j=0;j<header.length;j++){
+            obj[header[j]] = String(cols[j] ?? "").trim();
+          }
+          rows.push(obj);
+        }
+        return rows;
+      }
+
+      async function computeTotalCards(manifest){
+        const sources = Array.isArray(manifest?.sources) ? manifest.sources : [];
+        const urls = sources
+          .map(s => String(s?.cardsCsv ?? "").trim())
+          .filter(Boolean);
+
+        let total = 0;
+        for(const u of urls){
+          // absolute or relative
+          let csvUrl = u;
+          try{ csvUrl = new URL(u, location.href).toString(); }catch{}
+          const rows = await fetchCsvRows(csvUrl);
+          total += rows.length; // cards.csv 1行 = 1カード前提
+        }
+        return total;
+      }
+
+      async function render(){
+        // 1) manifest
+        const mRes = await fetch(MANIFEST_URL, { cache:"no-store" });
+        if(!mRes.ok) throw new Error("manifest HTTP " + mRes.status);
+        const manifest = await mRes.json();
+
+        // 2) total cards
+        const total = await computeTotalCards(manifest);
+
+        // 3) owned unique types from localStorage
+        const storageKey = String(manifest?.storageKey ?? "hklobby.v1.cardCounts");
+        const raw = (()=>{ try{ return localStorage.getItem(storageKey); }catch{ return null; } })();
+        const countsObj = raw ? safeJsonParse(raw) : null;
+        const owned = summarizeCounts(countsObj);
+
+        const rank = rankByRatio(owned, total);
+
+        elRank.textContent = rank;
+        elTotal.textContent = String(total);
+        elCards.innerHTML = `<b>${owned}</b>/${total}`;
+      }
+
+      let inflight = false;
+      async function refresh(){
+        if(inflight) return;
+        inflight = true;
+        try{ await render(); }
+        catch{
+          elRank.textContent = "--";
+          elCards.textContent = "--/--";
+          elTotal.textContent = "--";
+        }finally{
+          inflight = false;
+        }
+      }
+
+      // boot + auto update
+      refresh();
+      document.addEventListener("visibilitychange", () => {
+        if(document.visibilityState === "visible") refresh();
+      });
+      window.addEventListener("storage", () => refresh());
+    })();
   </script>
 </body>
 </html>
