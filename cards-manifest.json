@@ -10,6 +10,11 @@
       "id": "bungakusi",
       "title": "文学史知識マスター",
       "cardsCsv": "https://naoki496.github.io/bungakusi-quiz/cards.csv"
+    },
+    {
+      "id": "kanji-y",
+      "title": "漢字読解マスター",
+      "cardsCsv": "https://naoki496.github.io/kanji-y-quiz/cards.csv"
     }
   ]
 }
